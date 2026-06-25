@@ -235,15 +235,26 @@ export async function handleIncoming({ session, waId, phone, name, body, waMessa
     [convo.id]
   );
 
-  // Perbarui rata-rata sentimen customer (dipakai dashboard & panel mood).
-  // Dihitung dari seluruh pesan customer yang sudah punya skor.
+  // Perbarui sentimen "representatif" customer (lihat recomputeCustomerAvg di
+  // sentiment.js untuk alasannya): campuran rata-rata + sentimen terendah, agar
+  // satu keluhan kuat tidak terkubur oleh basa-basi netral.
   if (sentiment != null) {
     await query(
-      `UPDATE customers SET avg_sentiment = (
-         SELECT ROUND(AVG(m.sentiment)::numeric, 3)
-           FROM messages m JOIN conversations c ON c.id=m.conversation_id
-          WHERE c.customer_id=$1 AND m.sender_type='customer' AND m.sentiment IS NOT NULL
-       ) WHERE id=$1`,
+      `UPDATE customers SET avg_sentiment = sub.score
+         FROM (
+           SELECT
+             CASE WHEN COUNT(*)=0 THEN NULL
+                  ELSE ROUND((
+                    LEAST(
+                      0.5*AVG(m.sentiment) + 0.5*MIN(m.sentiment),
+                      CASE WHEN MIN(m.sentiment) <= -0.3 THEN 0.6*MIN(m.sentiment) ELSE 1 END
+                    )
+                  )::numeric, 3)
+             END AS score
+             FROM messages m JOIN conversations c ON c.id=m.conversation_id
+            WHERE c.customer_id=$1 AND m.sender_type='customer' AND m.sentiment IS NOT NULL
+         ) sub
+       WHERE id=$1`,
       [customer.id]
     );
   }

@@ -1125,7 +1125,7 @@ async function refreshCtxPanel(){
     <div class="ctx-card">
       <h4>Ringkasan pelanggan</h4>
       <div class="mini-stat"><span class="k">Total chat</span><span class="v num">${c.total_chats||0}</span></div>
-      <div class="mini-stat"><span class="k">Rata-rata mood</span><span class="v num" style="color:${moodColor(c.avg_sentiment==null?null:+c.avg_sentiment)}">${c.avg_sentiment==null?'–':(+c.avg_sentiment>0?'+':'')+(+c.avg_sentiment).toFixed(2)}</span></div>
+      <div class="mini-stat"><span class="k">Mood percakapan</span><span class="v num" style="color:${moodColor(score)}">${score==null?'–':(score>0?'+':'')+score.toFixed(2)}</span></div>
       <div class="mini-stat"><span class="k">Kanal</span><span class="v" style="font-size:13px">${esc(c.account_label)}</span></div>
     </div>`;
 }

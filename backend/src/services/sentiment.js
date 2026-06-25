@@ -18,14 +18,29 @@
 import { query } from '../db/index.js';
 import { analyzeSentiment } from './llm.js';
 
-// Hitung ulang rata-rata sentimen untuk satu customer (dipakai dashboard & panel).
+// Hitung ulang sentimen "representatif" customer (dipakai dashboard, daftar, panel,
+// dan targeting broadcast negatif). BUKAN rata-rata polos: rata-rata membuat pesan
+// basa-basi netral mengencerkan sedikit pesan yang sangat negatif, sehingga pelanggan
+// yang komplain/marah tampak "netral" dan luput dari perhatian. Di sini kita campur
+// rata-rata dengan sentimen TERENDAH (paling negatif), sehingga satu keluhan kuat
+// ("saya kena tipu") cukup untuk menandai pelanggan sebagai negatif.
 async function recomputeCustomerAvg(customerId) {
   await query(
-    `UPDATE customers SET avg_sentiment = (
-       SELECT ROUND(AVG(m.sentiment)::numeric, 3)
-         FROM messages m JOIN conversations c ON c.id = m.conversation_id
-        WHERE c.customer_id = $1 AND m.sender_type = 'customer' AND m.sentiment IS NOT NULL
-     ) WHERE id = $1`,
+    `UPDATE customers SET avg_sentiment = sub.score
+       FROM (
+         SELECT
+           CASE WHEN COUNT(*)=0 THEN NULL
+                ELSE ROUND((
+                  LEAST(
+                    0.5*AVG(m.sentiment) + 0.5*MIN(m.sentiment),
+                    CASE WHEN MIN(m.sentiment) <= -0.3 THEN 0.6*MIN(m.sentiment) ELSE 1 END
+                  )
+                )::numeric, 3)
+           END AS score
+           FROM messages m JOIN conversations c ON c.id = m.conversation_id
+          WHERE c.customer_id = $1 AND m.sender_type = 'customer' AND m.sentiment IS NOT NULL
+       ) sub
+     WHERE id = $1`,
     [customerId]
   );
 }

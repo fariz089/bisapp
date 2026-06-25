@@ -360,9 +360,9 @@ app.get('/api/conversations/:id/insight', authMiddleware, async (req, res) => {
         ORDER BY COALESCE(wa_timestamp, created_at) ASC, id ASC`, [id]);
     const series = rows.map(r => Number(r.sentiment));
     const count = series.length;
-    const avg = count ? Math.round((series.reduce((a, b) => a + b, 0) / count) * 1000) / 1000 : null;
+    const mean = count ? series.reduce((a, b) => a + b, 0) / count : null;
 
-    // Tren: bandingkan rata-rata paruh awal vs paruh akhir
+    // Tren: bandingkan rata-rata paruh awal vs paruh akhir (pakai mean mentah).
     let trend = 'stabil';
     if (count >= 4) {
       const half = Math.floor(count / 2);
@@ -388,7 +388,33 @@ app.get('/api/conversations/:id/insight', authMiddleware, async (req, res) => {
       }
     }
 
-    res.json({ count, avg, trend, series, impression });
+    // ===== Skor mood untuk DIAL (bukan sekadar rata-rata) =====
+    // Masalah: rata-rata polos membuat pesan basa-basi netral ("Halo", "Slmt pagi",
+    // "Ini nomernya") MENGENCERKAN sedikit pesan yang sangat negatif, sehingga
+    // komplain/penipuan tampak "netral". Itu menyesatkan.
+    //
+    // Solusi: mood = campuran rata-rata + sentimen TEREKSTREM, dengan negatif diberi
+    // bobot lebih besar (satu "saya kena tipu" lebih penting dari lima "ok"). Lalu
+    // direkonsiliasi dengan kesan LLM: bila impression negatif/campuran tetapi angka
+    // mendekati nol, dial ditarik ke negatif agar tidak kontradiktif dengan teks di
+    // sebelahnya.
+    let mood = mean;
+    if (count) {
+      const minS = Math.min(...series);   // paling negatif
+      const maxS = Math.max(...series);   // paling positif
+      const extreme = Math.abs(minS) >= Math.abs(maxS) ? minS : maxS;
+      // 55% kesan ekstrem + 45% rata-rata: tangkap puncak emosi tanpa mengabaikan keseluruhan.
+      mood = 0.55 * extreme + 0.45 * mean;
+      // Penegasan arah negatif: bila ADA pesan cukup negatif, jangan biarkan mood positif.
+      if (minS <= -0.3) mood = Math.min(mood, minS * 0.6);
+    }
+    // Rekonsiliasi dengan kesan kualitatif LLM (lebih paham konteks penuh).
+    if (impression?.feeling === 'negatif') mood = Math.min(mood == null ? -0.4 : mood, -0.4);
+    else if (impression?.feeling === 'campuran') mood = Math.min(mood == null ? -0.15 : mood, -0.15);
+    if (mood != null) mood = Math.max(-1, Math.min(1, Math.round(mood * 1000) / 1000));
+
+    // avg = skor yang DITAMPILKAN di dial (mood representatif). series tetap mentah utk sparkline.
+    res.json({ count, avg: mood, mean: mean == null ? null : Math.round(mean * 1000) / 1000, trend, series, impression });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
