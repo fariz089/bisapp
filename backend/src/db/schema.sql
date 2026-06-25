@@ -228,15 +228,10 @@ ALTER TABLE conversations ADD COLUMN IF NOT EXISTS csat_score INT;        -- 1..
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS csat_at TIMESTAMPTZ;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS csat_token VARCHAR(64); -- token rahasia utk link rating
 
--- Hasil pembacaan AI atas bukti transfer (gambar) -> bantu verifikasi staf.
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS proof_amount NUMERIC(12,2);  -- nominal terbaca
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS proof_bank VARCHAR(80);      -- bank pengirim terbaca
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS proof_time VARCHAR(60);      -- waktu transaksi terbaca
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS proof_match VARCHAR(16);     -- 'match'|'mismatch'|'unclear'
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS proof_note TEXT;             -- ringkasan AI
-
--- Penjadwalan broadcast: kirim pada waktu tertentu (NULL = manual/segera).
-ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+-- Catatan: kolom pembacaan bukti transfer (proof_*) untuk tabel `payments` dan
+-- kolom `scheduled_at` untuk `broadcasts` kini didefinisikan langsung di dalam
+-- CREATE TABLE masing-masing (lihat di bawah), agar tidak bergantung pada urutan
+-- eksekusi saat database dibuat dari nol.
 
 -- Riwayat perubahan booking (reschedule / cancel) untuk audit.
 CREATE TABLE IF NOT EXISTS booking_changes (
@@ -271,7 +266,13 @@ CREATE TABLE IF NOT EXISTS payments (
   proof_url     TEXT,                         -- bukti transfer (bila upload manual)
   paid_at       TIMESTAMPTZ,
   expires_at    TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ DEFAULT now()
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  -- Hasil pembacaan AI atas bukti transfer (gambar) -> bantu verifikasi staf.
+  proof_amount  NUMERIC(12,2),               -- nominal terbaca
+  proof_bank    VARCHAR(80),                 -- bank pengirim terbaca
+  proof_time    VARCHAR(60),                 -- waktu transaksi terbaca
+  proof_match   VARCHAR(16),                 -- 'match'|'mismatch'|'unclear'
+  proof_note    TEXT                          -- ringkasan AI
 );
 CREATE INDEX IF NOT EXISTS idx_pay_booking ON payments(booking_id);
 
@@ -288,7 +289,8 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   failed        INT DEFAULT 0,
   created_by    INT REFERENCES agents(id),
   created_at    TIMESTAMPTZ DEFAULT now(),
-  finished_at   TIMESTAMPTZ
+  finished_at   TIMESTAMPTZ,
+  scheduled_at  TIMESTAMPTZ                    -- waktu kirim terjadwal (NULL = manual/segera)
 );
 -- Target per broadcast (1 baris per penerima). Worker memproses bertahap.
 CREATE TABLE IF NOT EXISTS broadcast_targets (
