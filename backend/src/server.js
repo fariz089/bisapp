@@ -34,7 +34,16 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+// strict:false agar body JSON primitif (true/false/angka/string) juga diterima,
+// bukan hanya object/array. Mencegah crash saat menyimpan setting bernilai boolean.
+app.use(express.json({ limit: '5mb', strict: false }));
+// Tangani body JSON yang rusak agar mengembalikan 400 rapi, bukan error tak tertangani.
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Body JSON tidak valid' });
+  }
+  next(err);
+});
 app.use(express.static(path.join(__dirname, '..', 'public')));
 // Media WhatsApp (gambar, dokumen) — folder bersama dengan WA service
 const MEDIA_DIR = process.env.MEDIA_DIR || '/app/media';

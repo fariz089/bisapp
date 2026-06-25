@@ -1397,7 +1397,9 @@ let _settings={};
 async function loadSettings(){
   try{ _settings=await api('/settings'); }catch{ $('settingsBody').innerHTML='<div class="empty">Gagal memuat</div>'; return; }
   const bh=_settings.business_hours||{days:{}}; const pi=_settings.payment_info||{};
-  const aiOn=_settings.ai_enabled!==false; // default menyala bila belum pernah diatur
+  // ai_enabled disimpan sbg {enabled:bool}. Toleransi bentuk lama (boolean langsung).
+  const aiRaw=_settings.ai_enabled;
+  const aiOn=(aiRaw && typeof aiRaw==='object') ? aiRaw.enabled!==false : aiRaw!==false; // default menyala
   const dayNames=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
   const isAdmin=me&&me.role==='admin';
   const dis=isAdmin?'':'disabled';
@@ -1470,9 +1472,9 @@ async function loadSettings(){
     </div>`;
 }
 async function saveAiEnabled(on){
-  const r=await api('/settings/ai_enabled',{method:'PUT',body:JSON.stringify(!!on)});
+  const r=await api('/settings/ai_enabled',{method:'PUT',body:JSON.stringify({enabled:!!on})});
   if(r.error){ toast(r.error,'err'); return; }
-  _settings.ai_enabled=!!on;
+  _settings.ai_enabled={enabled:!!on};
   toast(on?'AI dinyalakan — membalas otomatis':'AI dimatikan — tidak membalas chat','ok');
   loadSettings(); // segarkan label & warna status
 }

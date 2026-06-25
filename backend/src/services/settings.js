@@ -34,6 +34,15 @@ export async function getAllSettings() {
   return out;
 }
 
+// Saklar global AI. Disimpan sebagai {enabled:boolean}. Toleran terhadap bentuk
+// lama (boolean langsung) maupun belum diatur (default: menyala).
+export async function isAiEnabled() {
+  const v = await getSetting('ai_enabled', null).catch(() => null);
+  if (v == null) return true;                     // belum pernah diatur -> menyala
+  if (typeof v === 'object') return v.enabled !== false;
+  return v !== false;                             // bentuk lama: boolean langsung
+}
+
 // --- Jam kerja ---
 // Mengembalikan {open:boolean, reason, message} berdasarkan setting 'business_hours'.
 // Catatan: perhitungan zona waktu memakai TZ proses (di-set di docker-compose / env).

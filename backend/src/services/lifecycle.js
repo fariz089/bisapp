@@ -24,7 +24,7 @@ import { getHistory } from './conversation.js';
 import { expireOverdue } from './payments.js';
 import { reapStalePresence } from './escalation.js';
 import { tickBroadcast, activateDueBroadcasts } from './broadcast.js';
-import { getSetting } from './settings.js';
+import { getSetting, isAiEnabled } from './settings.js';
 import { backfillSentimentBatch } from './sentiment.js';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
@@ -132,7 +132,7 @@ async function tick() {
 
     // Saklar global AI: bila dimatikan, AI tidak mengirim nudge maupun pesan
     // penutup ke customer. Sesi tetap di-auto-close agar tidak menggantung.
-    const aiEnabled = await getSetting('ai_enabled', true).catch(() => true);
+    const aiEnabled = await isAiEnabled();
 
     for (const convo of rows) {
       const idleMin = convo.idle_sec / 60;

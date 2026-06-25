@@ -4,7 +4,7 @@ import { ticketContextForAI, createAkapBooking, bookedSeats, createCharterBookin
 import { createPaymentForBooking, paymentInstructionText, pendingPaymentForConversation, verifyProofImage } from './payments.js';
 import { businessHoursStatus } from './settings.js';
 import { pickAgentForHandover } from './escalation.js';
-import { getSetting } from './settings.js';
+import { getSetting, isAiEnabled } from './settings.js';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || ''; // utk link pembayaran absolut (opsional)
 
@@ -263,7 +263,7 @@ export async function handleIncoming({ session, waId, name, body, waMessageId, m
 
   // Saklar global AI: bila admin mematikan AI dari Pengaturan, AI tidak membalas
   // siapa pun. Pesan tetap tersimpan & masuk dashboard untuk dijawab manual oleh staf.
-  const aiEnabled = await getSetting('ai_enabled', true).catch(() => true);
+  const aiEnabled = await isAiEnabled();
 
   // ===== Bukti transfer (gambar) =====
   // Bila customer mengirim GAMBAR dan ada tagihan aktif di percakapan ini, AI membaca
