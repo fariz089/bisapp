@@ -1071,6 +1071,27 @@ async function refreshCtxPanel(){
   try{ ins=await api('/conversations/'+c.id+'/insight'); }catch{}
   const beh=behaviorOf(c.behavior_tag);
   const score=ins.avg!=null?ins.avg:(c.avg_sentiment!=null?+c.avg_sentiment:null);
+
+  // Sinkronkan skor live ke currentConv agar titik mood di daftar langsung ikut.
+  // Tanpa ini, titik pakai nilai lama dari saat list dimuat (bisa berbeda dari dial).
+  if(score!=null && currentConv && currentConv.id===c.id){
+    currentConv.avg_sentiment=score;
+    // Perbarui avatar di header chat.
+    const av=document.querySelector('#chatTop .avatar');
+    if(av) av.style.background=moodColor(score);
+    // Perbarui titik mood di baris daftar percakapan yang sedang aktif — tanpa
+    // fetch ulang sehingga tidak kembali ke nilai lama dari DB.
+    const activeRow=document.querySelector('.conv.active .dotmood');
+    if(activeRow){
+      activeRow.className='dotmood '+moodClass(score);
+      activeRow.title=moodLabel(score);
+      // Label teks di sebelah titik (bila tidak ada chip behavior).
+      const lbl=activeRow.nextElementSibling;
+      if(lbl&&lbl.style&&!lbl.className.includes('chip')){
+        lbl.textContent=moodLabel(score);
+      }
+    }
+  }
   const trendMap={membaik:{t:'Membaik',c:'var(--pos)',w:'var(--pos-wash)',i:'M3 17l6-6 4 4 8-8'},memburuk:{t:'Memburuk',c:'var(--neg)',w:'var(--neg-wash)',i:'M3 7l6 6 4-4 8 8'},stabil:{t:'Stabil',c:'var(--muted)',w:'var(--surface-2)',i:'M3 12h18'}};
   const tr=trendMap[ins.trend]||trendMap.stabil;
   const spark=ins.series.length>1?`<svg class="spark" viewBox="0 0 220 40" preserveAspectRatio="none" style="height:40px;width:100%;margin-top:10px">
