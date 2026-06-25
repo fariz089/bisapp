@@ -780,12 +780,27 @@ const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&g
 const rupiah=n=>'Rp'+Number(n||0).toLocaleString('id-ID');
 const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
 
-// Nomor rapi dari wa_id/phone (mis. '628123...@c.us' -> '+628123...').
-function prettyPhone(c){
-  let p=(c&&(c.phone||c.wa_id))||'';
-  p=String(p).split('@')[0].replace(/\D/g,'');
-  return p?('+'+p):'';
+// Nomor telepon rapi UNTUK TAMPILAN. Hanya percaya field `phone` yang valid
+// (8–15 digit). wa_id bisa berupa @lid (id internal WhatsApp) yang BUKAN nomor —
+// jangan pernah menampilkan digit @lid sebagai nomor HP.
+function validPhoneDigits(p){
+  const d=String(p||'').replace(/\D/g,'');
+  return (d.length>=8 && d.length<=15)?d:null;
 }
+function prettyPhone(c){
+  // 1) phone tervalidasi dari backend.
+  let d=validPhoneDigits(c&&c.phone);
+  // 2) bila tak ada, baru pakai wa_id TAPI hanya kalau berbasis @c.us (nomor).
+  if(!d){
+    const wid=String((c&&c.wa_id)||'');
+    if(wid.endsWith('@c.us')) d=validPhoneDigits(wid.split('@')[0]);
+  }
+  return d?('+'+d):'';
+}
+// Apakah customer ini punya nomor telepon asli yang diketahui?
+function hasPhone(c){ return !!prettyPhone(c); }
+// Label nomor untuk ditampilkan saat tak ada nama (atau di baris meta).
+function phoneLabel(c){ return prettyPhone(c) || 'Nomor tak diketahui'; }
 // Nama tampilan: NOMOR + nama (bila ada nama yang masuk akal).
 // Pushname WhatsApp bisa berisi sampah (mis. biner '01001000', simbol, atau
 // sekadar berupa angka). Nama seperti itu DIABAIKAN — cukup tampilkan nomor.
@@ -804,7 +819,7 @@ function displayName(c){
   if(looksLikeRealName(name)){
     return phone?`${name} (${phone})`:name;
   }
-  return phone||'Tanpa nama';
+  return phone||'Nomor tak diketahui';
 }
 
 function toast(msg,kind=''){
@@ -946,7 +961,7 @@ async function openConv(c){
       <div class="avatar" style="background:${moodColor(c.avg_sentiment==null?null:+c.avg_sentiment)}">${initials(looksLikeRealName(c.customer_name)?c.customer_name:prettyPhone(c))}</div>
       <div>
         <div class="nm">${esc(displayName(c))}</div>
-        <div class="meta">${esc(c.account_label)} · ${esc(prettyPhone(c))} ${beh}</div>
+        <div class="meta">${esc(c.account_label)} · ${esc(phoneLabel(c))} ${beh}</div>
       </div>
     </div>
     <div class="actions">

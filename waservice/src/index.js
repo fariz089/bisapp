@@ -58,6 +58,35 @@ async function downloadMedia(msg) {
 let lastQrDataUrl = null;
 let ready = false;
 
+// Apakah sebuah id WhatsApp berbasis NOMOR TELEPON (@c.us) dan bukan id internal
+// seperti @lid / @g.us. Hanya @c.us yang bagian depannya = MSISDN asli.
+function phoneFromId(id) {
+  if (!id || typeof id !== 'string') return null;
+  // Format: '628123456789@c.us' -> '628123456789'. @lid/@g.us TIDAK berisi nomor.
+  if (!id.endsWith('@c.us')) return null;
+  const digits = id.split('@')[0].replace(/\D/g, '');
+  // MSISDN wajar: 8–15 digit (E.164 maks 15).
+  if (digits.length < 8 || digits.length > 15) return null;
+  return digits;
+}
+
+// Coba dapatkan nomor telepon ASLI dari sebuah pesan, menembus skema @lid baru.
+// Urutan upaya: id pesan -> objek Contact (.id @c.us / .number). Bila tetap tidak
+// ketemu (umum untuk @lid yang tak ter-link), kembalikan null — JANGAN mengarang.
+async function resolvePhone(msg, fallbackId) {
+  let phone = phoneFromId(fallbackId) || phoneFromId(msg?.from) || phoneFromId(msg?.author);
+  if (phone) return phone;
+  try {
+    const c = await msg.getContact();
+    phone = phoneFromId(c?.id?._serialized);
+    if (phone) return phone;
+    // Contact.number kadang berisi MSISDN langsung (tanpa @c.us).
+    const num = (c?.number || '').replace(/\D/g, '');
+    if (num.length >= 8 && num.length <= 15) return num;
+  } catch {}
+  return null;
+}
+
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
@@ -122,11 +151,15 @@ client.on('message', async (msg) => {
   let contactName = null;
   try { const c = await msg.getContact(); contactName = c?.pushname || c?.name || null; } catch {}
 
+  // Nomor telepon ASLI (bisa null bila pengirim memakai @lid yang tak ter-link).
+  const phone = await resolvePhone(msg, msg.from);
+
   let mediaInfo = {};
   if (msg.hasMedia) mediaInfo = await downloadMedia(msg);
 
   await postWebhook('incoming', {
-    waId: msg.from,
+    waId: msg.from,            // alamat ROUTABLE (utk balas) — @c.us atau @lid
+    phone,                     // MSISDN bersih utk tampilan, atau null
     name: contactName,
     body: msg.body || '',
     waMessageId: msg.id?._serialized,
@@ -166,13 +199,25 @@ async function syncOldMessages() {
   for (const chat of chats) {
     if (chat.isGroup) continue;
     const msgs = await fetchAllMessages(chat);
+    // Nomor telepon level-chat: dari id chat (@c.us) atau kontak chat.
+    let chatPhone = phoneFromId(chat?.id?._serialized);
+    if (!chatPhone) {
+      try {
+        const cc = await chat.getContact();
+        chatPhone = phoneFromId(cc?.id?._serialized)
+          || ((cc?.number || '').replace(/\D/g, '').length >= 8 ? (cc.number || '').replace(/\D/g, '') : null);
+      } catch {}
+    }
     for (const m of msgs) {
       // hanya pesan masuk dari customer yang kita simpan via webhook incoming.
       // pesan keluar lama (fromMe) dikirim sebagai histori juga agar transkrip utuh.
       let mediaInfo = {};
       if (m.hasMedia) mediaInfo = await downloadMedia(m);
+      // Untuk pesan masuk, coba nomor pengirim; fallback ke nomor chat.
+      const phone = (!m.fromMe ? await resolvePhone(m, m.from) : null) || chatPhone;
       await postWebhook('incoming', {
         waId: m.fromMe ? chat.id._serialized : m.from,
+        phone,
         name: chat.name || null,
         body: m.body || '',
         waMessageId: m.id?._serialized,

@@ -91,19 +91,39 @@ async function executeAiAction(action, { convo, customer }) {
   }
 }
 
-// Ambil/insert customer
-async function getOrCreateCustomer(waId, name) {
+// Validasi MSISDN: hanya angka, 8–15 digit (E.164). Selain itu -> null.
+function validPhone(p) {
+  const d = String(p || '').replace(/\D/g, '');
+  return (d.length >= 8 && d.length <= 15) ? d : null;
+}
+// Telepon "tampilan" dari wa_id HANYA bila wa_id berbasis @c.us. @lid/@g.us -> null
+// (digitnya BUKAN nomor telepon, jadi jangan dijadikan phone).
+function phoneFromWaId(waId) {
+  if (!waId || !String(waId).endsWith('@c.us')) return null;
+  return validPhone(String(waId).split('@')[0]);
+}
+
+// Ambil/insert customer.
+// phoneHint: nomor telepon yang sudah diresolve WA service (bisa null untuk @lid).
+async function getOrCreateCustomer(waId, name, phoneHint) {
+  // Nomor terbaik yang kita punya: hint tervalidasi, atau dari wa_id bila @c.us.
+  const phone = validPhone(phoneHint) || phoneFromWaId(waId);
+
   let { rows } = await query('SELECT * FROM customers WHERE wa_id=$1', [waId]);
-  if (rows.length) return rows[0];
-  const phone = waId.split('@')[0];
+  if (rows.length) {
+    // Bila dulu phone kosong/aneh tapi sekarang sudah tahu nomor asli, lengkapi.
+    if (phone && rows[0].phone !== phone) {
+      await query('UPDATE customers SET phone=$1 WHERE id=$2', [phone, rows[0].id]).catch(() => {});
+      rows[0].phone = phone;
+    }
+    return rows[0];
+  }
   // ON CONFLICT DO NOTHING menangani race condition saat dua webhook untuk
   // wa_id yang sama datang hampir bersamaan (umum terjadi saat sync riwayat).
-  // Kalau insert ini "menang", row baru langsung dikembalikan.
-  // Kalau "kalah" (row lain sudah insert duluan), rows kosong -> SELECT ulang.
   ({ rows } = await query(
     `INSERT INTO customers (wa_id, phone, name) VALUES ($1,$2,$3)
      ON CONFLICT (wa_id) DO NOTHING RETURNING *`,
-    [waId, phone, name || null]
+    [waId, phone, name || null]   // phone bisa null — itu BENAR untuk @lid
   ));
   if (rows.length) return rows[0];
   ({ rows } = await query('SELECT * FROM customers WHERE wa_id=$1', [waId]));
@@ -169,11 +189,11 @@ async function saveMessage(m) {
 // ============ Handler utama pesan MASUK dari WA service ============
 // io: socket.io untuk push realtime ke dashboard
 // sendFn: async (session, waId, text) => kirim balasan via WA service
-export async function handleIncoming({ session, waId, name, body, waMessageId, waTimestamp, mediaType, mediaUrl, mediaName, historical, fromMe }, io, sendFn) {
+export async function handleIncoming({ session, waId, phone, name, body, waMessageId, waTimestamp, mediaType, mediaUrl, mediaName, historical, fromMe }, io, sendFn) {
   const account = await getAccountBySession(session);
   if (!account) return;
 
-  const customer = await getOrCreateCustomer(waId, name);
+  const customer = await getOrCreateCustomer(waId, name, phone);
   const convo = await getOrCreateConversation(account.id, customer.id);
 
   // Pesan keluar historis (fromMe) saat sinkronisasi: simpan sebagai transkrip, jangan picu AI

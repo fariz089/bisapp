@@ -305,7 +305,26 @@ app.post('/api/insights/backfill-sentiment', authMiddleware, async (req, res) =>
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ---------- Reset sentimen ber-teks yang ter-set 0 (admin) ----------
+// ---------- Bersihkan nomor telepon palsu dari @lid (admin) ----------
+// Versi lama menyimpan bagian depan wa_id sebagai phone, termasuk untuk id @lid
+// (id internal WhatsApp) yang BUKAN nomor telepon — menghasilkan '+279...' dst.
+// Endpoint ini meng-NULL-kan phone yang: (a) bukan 8–15 digit, ATAU (b) wa_id-nya
+// bukan @c.us (artinya digit phone tak bisa dipercaya sebagai nomor asli).
+// Tampilan lalu menunjukkan "Nomor tak diketahui" alih-alih nomor karangan.
+app.post('/api/customers/clean-phones', authMiddleware, async (req, res) => {
+  if (req.agent.role !== 'admin') return res.status(403).json({ error: 'Hanya admin' });
+  try {
+    const r = await query(
+      `UPDATE customers SET phone=NULL
+        WHERE phone IS NOT NULL
+          AND (
+            wa_id NOT LIKE '%@c.us'
+            OR length(regexp_replace(phone, '[^0-9]', '', 'g')) NOT BETWEEN 8 AND 15
+          )`);
+    res.json({ ok: true, cleaned: r.rowCount,
+      info: 'Nomor yang tidak valid / berasal dari @lid di-NULL-kan. Nomor asli akan terisi otomatis saat customer mengirim pesan lagi (bila ter-link).' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // Versi lama menyimpan 0 ("netral") saat penilaian LLM GAGAL (mis. 429), sehingga
 // data terkunci netral. Endpoint ini meng-NULL-kan kembali skor 0 pada pesan yang
 // SEBENARNYA berisi teks, agar scheduler menilainya ulang dengan benar.
