@@ -1026,6 +1026,48 @@ app.get('/api/reports/sales.csv', authMiddleware, async (req, res) => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// ---------- DIAGNOSTIK BUILD & DATA (admin) ----------
+// Bantu memastikan apakah KODE BARU benar-benar ter-deploy, dan melihat data
+// mentah customer (wa_id/phone) tanpa perlu akses database dari luar.
+// Buka: /api/diag  (perlu login admin).
+const BUILD_TAG = 'fix-2026-06-lid-phone+mood';
+app.get('/api/diag', authMiddleware, async (req, res) => {
+  if (req.agent.role !== 'admin') return res.status(403).json({ error: 'Hanya admin' });
+  try {
+    // Berapa customer yang nomornya MASIH mencurigakan (bukan @c.us atau bukan 8–15 digit).
+    const bad = (await query(
+      `SELECT COUNT(*)::int AS n FROM customers
+        WHERE phone IS NOT NULL
+          AND (wa_id NOT LIKE '%@c.us'
+               OR length(regexp_replace(phone,'[^0-9]','','g')) NOT BETWEEN 8 AND 15)`)).rows[0].n;
+    // Berapa pesan customer ber-teks yang ter-skor TEPAT 0 (indikasi 429 lama).
+    const zero = (await query(
+      `SELECT COUNT(*)::int AS n FROM messages
+        WHERE sender_type='customer' AND sentiment=0
+          AND body IS NOT NULL AND length(trim(body))>0`)).rows[0].n;
+    // Contoh 5 customer untuk dilihat langsung.
+    const sample = (await query(
+      `SELECT wa_id, phone, name FROM customers ORDER BY id DESC LIMIT 5`)).rows;
+    res.json({
+      build: BUILD_TAG,
+      hasFix: {
+        // true semua = kode baru aktif
+        cleanPhonesEndpoint: true,
+        lidPhoneLogic: true,
+        weightedMood: true,
+      },
+      data: {
+        customersWithSuspiciousPhone: bad,   // > 0 = perlu jalankan clean-phones
+        textMessagesScoredZero: zero,        // > 0 = perlu jalankan reset-neutral
+        sampleCustomers: sample,
+      },
+      hint: bad > 0 || zero > 0
+        ? 'Data lama belum dibersihkan. Jalankan POST /api/customers/clean-phones dan/atau POST /api/insights/reset-neutral.'
+        : 'Data bersih. Bila masih ada nomor aneh, kemungkinan itu @lid yang nomornya memang tak tersedia (tampil "Nomor tak diketahui").',
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ==================== SOCKET (dashboard + presence agen) ====================
 io.on('connection', (socket) => {
   // Klien mengirim token via auth saat connect untuk presence agen.
