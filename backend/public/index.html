@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Halte · Konsol Layanan & Tiket</title>
+<script src="/socket.io/socket.io.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16202C; --canvas:#F6F7F9; --surface:#FFFFFF; --surface-2:#FAFBFC;
+  --line:#E7EAEE; --line-strong:#D7DCE2; --muted:#697785; --muted-2:#94A0AC;
+  --brand:#1B6CFF; --brand-ink:#0B3FA8; --brand-wash:#EAF1FF; --brand-wash-2:#F2F6FF;
+  --pos:#15A66A; --pos-wash:#E6F6EE; --neu:#C2890E; --neu-wash:#FBF2DD; --neg:#E0473E; --neg-wash:#FCEBEA;
+  --ai:#6B4DE6; --ai-wash:#EFEBFD;
+  --shadow-sm:0 1px 2px rgba(16,32,44,.06),0 1px 3px rgba(16,32,44,.04);
+  --shadow-md:0 4px 12px rgba(16,32,44,.08),0 2px 4px rgba(16,32,44,.04);
+  --shadow-lg:0 18px 48px rgba(16,32,44,.16),0 6px 16px rgba(16,32,44,.08);
+  --r-sm:8px; --r:12px; --r-lg:16px; --r-xl:22px;
+  --ff-display:'Plus Jakarta Sans',system-ui,sans-serif;
+  --ff-body:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--canvas);color:var(--ink);font-family:var(--ff-body);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;overflow:hidden;
+}
+.hidden{display:none!important}
+h1,h2,h3,h4,.dsp{font-family:var(--ff-display);letter-spacing:-.015em}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+::selection{background:var(--brand-wash);color:var(--brand-ink)}
+/* scrollbars */
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-thumb{background:#D4DAE1;border-radius:20px;border:3px solid transparent;background-clip:content-box}
+*::-webkit-scrollbar-thumb:hover{background:#BCC4CD;background-clip:content-box}
+
+/* ---------- form controls ---------- */
+input,textarea,select{
+  width:100%;padding:10px 12px;background:var(--surface);border:1px solid var(--line-strong);
+  border-radius:var(--r-sm);color:var(--ink);font-family:var(--ff-body);font-size:14px;
+  transition:border-color .15s,box-shadow .15s;
+}
+input::placeholder,textarea::placeholder{color:var(--muted-2)}
+input:focus,textarea:focus,select:focus{
+  outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-wash);
+}
+select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23697785' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 6 8 10 12 6'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px;cursor:pointer}
+label.fld{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px 2px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+
+button{cursor:pointer;border:none;font-family:var(--ff-display);font-weight:600;font-size:14px;border-radius:var(--r-sm)}
+.btn{background:var(--brand);color:#fff;padding:10px 16px;display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:background .15s,transform .05s,box-shadow .15s;box-shadow:var(--shadow-sm)}
+.btn:hover{background:#155CDB}.btn:active{transform:translateY(1px)}
+.btn:disabled{background:#B9C5D4;cursor:not-allowed;box-shadow:none}
+.btn.block{width:100%}
+.btn-sm{padding:7px 13px;font-size:13px}
+.btn-ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);box-shadow:none}
+.btn-ghost:hover{background:var(--surface-2);border-color:var(--muted-2)}
+.btn-ok{background:var(--pos)}.btn-ok:hover{background:#129159}
+.btn-warn{background:var(--neu);color:#fff}.btn-warn:hover{background:#A9770A}
+.btn-danger{background:var(--surface);color:var(--neg);border:1px solid #F1C7C4;box-shadow:none}
+.btn-danger:hover{background:var(--neg-wash)}
+.btn-tiny{padding:4px 9px;font-size:12px;border-radius:6px}
+.icon-btn{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:9px}
+
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--ff-display);font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.01em;white-space:nowrap}
+.chip svg{width:12px;height:12px}
+.chip.ai{background:var(--ai-wash);color:var(--ai)}
+.chip.human{background:var(--neu-wash);color:#9A6B07}
+.chip.pending{background:var(--neg-wash);color:var(--neg)}
+.chip.pos{background:var(--pos-wash);color:#0E7A4E}
+.chip.neu{background:var(--neu-wash);color:#9A6B07}
+.chip.neg{background:var(--neg-wash);color:var(--neg)}
+.chip.soft{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.chip.brand{background:var(--brand-wash);color:var(--brand-ink)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm)}
+
+/* ============================= LOGIN ============================= */
+#login{height:100vh;display:flex;align-items:stretch}
+.login-aside{flex:1.1;background:
+   radial-gradient(120% 100% at 0% 0%, #1F4FD6 0%, #1B6CFF 42%, #0B3FA8 100%);
+   color:#fff;padding:56px 60px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.login-aside::after{content:"";position:absolute;inset:0;opacity:.5;
+   background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.06) 0 1px,transparent 1px 84px),
+   repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 84px);
+   mask-image:radial-gradient(120% 120% at 80% 20%,#000,transparent 75%)}
+.login-aside>*{position:relative;z-index:1}
+.brand-lockup{display:flex;align-items:center;gap:12px;font-family:var(--ff-display);font-weight:800;font-size:22px;letter-spacing:-.02em}
+.brand-mark{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.16);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.25)}
+.flap{font-family:var(--ff-display);font-weight:800;font-size:52px;line-height:1.05;letter-spacing:-.03em;max-width:11ch}
+.flap span{color:#BBD2FF}
+.login-aside p.sub{color:#D6E2FF;font-size:15px;max-width:42ch;margin-top:18px;line-height:1.6}
+.board{margin-top:34px;display:flex;flex-direction:column;gap:8px;max-width:380px}
+.board-row{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:11px 14px;font-size:13px}
+.board-row .led{width:8px;height:8px;border-radius:50%;background:#7BFFC4;box-shadow:0 0 0 3px rgba(123,255,196,.25)}
+.board-row b{font-family:var(--ff-display);font-weight:700}
+.board-row .r{margin-left:auto;color:#BBD2FF;font-variant-numeric:tabular-nums}
+.login-foot{color:#A9C2F2;font-size:12.5px}
+.login-main{flex:.9;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--surface)}
+.login-form{width:100%;max-width:360px}
+.login-form h2{font-size:24px;margin-bottom:6px}
+.login-form .lead{color:var(--muted);margin-bottom:26px;font-size:14px}
+.login-form label.fld{margin-top:14px}
+.login-form .btn{margin-top:22px}
+.cred-hint{margin-top:18px;font-size:12.5px;color:var(--muted);background:var(--surface-2);border:1px dashed var(--line-strong);border-radius:var(--r-sm);padding:10px 12px}
+.cred-hint b{color:var(--ink);font-family:var(--ff-display)}
+#loginErr{color:var(--neg);font-size:13px;margin-top:14px;font-weight:500;min-height:18px}
+@media(max-width:880px){.login-aside{display:none}}
+
+/* ============================= APP SHELL ============================= */
+#app{height:100vh;display:flex;flex-direction:column}
+.topbar{height:60px;flex:0 0 60px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 18px;z-index:30}
+.topbar .brand-lockup{font-size:18px;color:var(--ink)}
+.topbar .brand-mark{width:34px;height:34px;border-radius:9px;background:var(--brand);border:none}
+.topbar .brand-mark svg{color:#fff}
+.search{flex:1;max-width:440px;position:relative}
+.search input{padding-left:38px;background:var(--surface-2);border-color:var(--line)}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted-2);width:17px;height:17px;pointer-events:none}
+.search-pop{position:absolute;top:46px;left:0;right:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-lg);overflow:hidden;z-index:40;max-height:340px;overflow-y:auto}
+.search-pop .res{padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--line)}
+.search-pop .res:hover{background:var(--brand-wash-2)}
+.search-pop .res:last-child{border-bottom:none}
+.topbar .spacer{flex:1}
+.conn-pill{display:inline-flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 12px 6px 10px;font-size:12.5px;font-weight:600;font-family:var(--ff-display);color:var(--muted)}
+.conn-pill .led{width:8px;height:8px;border-radius:50%}
+.led.up{background:var(--pos);box-shadow:0 0 0 3px var(--pos-wash)}
+.led.down{background:var(--neu);box-shadow:0 0 0 3px var(--neu-wash)}
+.whoami{display:flex;align-items:center;gap:10px}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-weight:700;font-size:14px}
+.whoami .nm{font-family:var(--ff-display);font-weight:600;font-size:13px;line-height:1.1}
+.whoami .rl{font-size:11px;color:var(--muted)}
+
+.body{flex:1;display:flex;min-height:0}
+.nav{width:74px;flex:0 0 74px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px}
+.nav button{width:54px;height:52px;border-radius:14px;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-family:var(--ff-display);font-size:10px;font-weight:600;position:relative;transition:background .15s,color .15s}
+.nav button svg{width:21px;height:21px}
+.nav button:hover{background:var(--surface-2);color:var(--ink)}
+.nav button.active{background:var(--brand-wash);color:var(--brand-ink)}
+.nav button .badge{position:absolute;top:5px;right:9px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--neg);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface)}
+.nav .sep{width:34px;height:1px;background:var(--line);margin:6px 0}
+
+.workspace{flex:1;min-width:0;display:flex}
+
+/* generic panel view (non-chat tabs) */
+.view{flex:1;overflow-y:auto;padding:28px 32px}
+.view-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
+.view-head .eyebrow{font-family:var(--ff-display);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--brand);margin-bottom:5px}
+.view-head h2{font-size:25px}
+.view-head p{color:var(--muted);font-size:13.5px;margin-top:4px;max-width:60ch}
+
+/* tables */
+.tbl-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead th{text-align:left;padding:13px 16px;background:var(--surface-2);color:var(--muted);font-family:var(--ff-display);font-weight:700;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--line)}
+tbody td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--brand-wash-2)}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.empty .ico{width:46px;height:46px;border-radius:13px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;color:var(--muted-2);margin-bottom:12px}
+.empty h4{font-size:15px;color:var(--ink);margin-bottom:4px}
+
+.section-title{font-family:var(--ff-display);font-weight:700;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:26px 0 12px}
+.form-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px;box-shadow:var(--shadow-sm);margin-bottom:14px}
+.form-card h3{font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.stack>*{margin-bottom:10px}.stack>*:last-child{margin-bottom:0}
+
+/* tabs (segmented) */
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:4px;gap:3px}
+.seg button{background:transparent;color:var(--muted);padding:7px 15px;font-size:13px;border-radius:8px;display:inline-flex;align-items:center;gap:7px}
+.seg button.active{background:var(--surface);color:var(--brand-ink);box-shadow:var(--shadow-sm)}
+
+/* ============================= CHAT ============================= */
+.conv-pane{width:340px;flex:0 0 340px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.conv-head{padding:16px 18px 14px;border-bottom:1px solid var(--line)}
+.conv-head h3{font-size:17px;margin-bottom:12px;display:flex;align-items:center;gap:9px}
+.conv-head .filters{display:flex;gap:8px}
+.conv-head .filters select{font-size:12.5px;padding:8px 28px 8px 10px}
+.conv-list{flex:1;overflow-y:auto}
+.conv{padding:13px 18px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s;position:relative}
+.conv:hover{background:var(--surface-2)}
+.conv.active{background:var(--brand-wash-2)}
+.conv.active::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand)}
+.conv .l1{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.conv .nm{font-family:var(--ff-display);font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv .l2{display:flex;align-items:center;gap:8px;margin-top:5px}
+.conv .chan{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv .l3{display:flex;align-items:center;gap:8px;margin-top:8px}
+.spark{height:22px;flex:1}
+.dotmood{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.dotmood.pos{background:var(--pos)}.dotmood.neu{background:var(--neu)}.dotmood.neg{background:var(--neg)}.dotmood.none{background:var(--line-strong)}
+
+.chat{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--canvas)}
+.chat-top{flex:0 0 auto;background:var(--surface);border-bottom:1px solid var(--line);padding:13px 20px;display:flex;align-items:center;gap:14px}
+.chat-top .who{display:flex;align-items:center;gap:12px;min-width:0}
+.chat-top .who .nm{font-family:var(--ff-display);font-weight:700;font-size:16px}
+.chat-top .who .meta{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:7px;margin-top:2px}
+.chat-top .actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.chat-scroll{flex:1;overflow-y:auto;padding:22px 22px 8px}
+.daysep{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--muted-2);font-size:11.5px;font-weight:600;font-family:var(--ff-display)}
+.daysep::before,.daysep::after{content:"";flex:1;height:1px;background:var(--line)}
+.row-msg{display:flex;margin-bottom:10px}
+.row-msg.out{justify-content:flex-end}
+.bub{max-width:62%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;box-shadow:var(--shadow-sm)}
+.bub.in{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:5px;color:var(--ink)}
+.bub.out{color:#fff;border-bottom-right-radius:5px}
+.bub.out.ai{background:linear-gradient(180deg,#7B5BF0,#6B4DE6)}
+.bub.out.agent{background:linear-gradient(180deg,#2E7BFF,#1B6CFF)}
+.bub img,.bub video{max-width:240px;border-radius:10px;display:block;margin-bottom:6px}
+.bub audio{margin-bottom:4px}
+.bub a{color:#fff;text-decoration:underline}
+.bub.in a{color:var(--brand)}
+.bub .meta{font-size:10.5px;margin-top:5px;opacity:.72;display:flex;align-items:center;gap:6px;font-family:var(--ff-display);font-weight:600}
+.composer{flex:0 0 auto;background:var(--surface);border-top:1px solid var(--line);padding:12px 16px}
+.composer .qr-bar{display:flex;gap:6px;overflow-x:auto;padding-bottom:9px;margin-bottom:4px}
+.composer .qr-bar::-webkit-scrollbar{height:0}
+.qr-pill{flex:0 0 auto;background:var(--surface-2);border:1px solid var(--line-strong);color:var(--muted);border-radius:999px;padding:6px 12px;font-size:12px;font-family:var(--ff-display);font-weight:600;white-space:nowrap;cursor:pointer;transition:all .12s}
+.qr-pill:hover{background:var(--brand-wash);color:var(--brand-ink);border-color:var(--brand-wash)}
+.composer .field{display:flex;gap:10px;align-items:flex-end}
+.composer textarea{resize:none;min-height:46px;max-height:140px;border-radius:13px}
+.composer .send{height:46px;width:46px;flex:0 0 46px;border-radius:13px;display:flex;align-items:center;justify-content:center;padding:0}
+.center-state{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);padding:40px}
+.center-state .ico{width:64px;height:64px;border-radius:18px;background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted-2);margin:0 auto 16px;box-shadow:var(--shadow-sm)}
+.center-state h3{font-size:17px;color:var(--ink);margin-bottom:6px}
+.center-state p{font-size:13.5px;max-width:38ch}
+
+/* insight context panel (signature) */
+.ctx{width:312px;flex:0 0 312px;background:var(--surface);border-left:1px solid var(--line);overflow-y:auto;padding:18px}
+.ctx .ctx-card{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:15px;margin-bottom:13px}
+.ctx h4{font-family:var(--ff-display);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.dial-wrap{display:flex;align-items:center;gap:14px}
+.dial{position:relative;width:92px;height:92px;flex:0 0 92px}
+.dial .lbl{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dial .lbl b{font-family:var(--ff-display);font-size:22px;font-weight:800;line-height:1}
+.dial .lbl small{font-size:10px;color:var(--muted);font-weight:600;margin-top:2px}
+.mood-read .tt{font-family:var(--ff-display);font-weight:700;font-size:15px;margin-bottom:3px}
+.mood-read .ds{font-size:12.5px;color:var(--muted);line-height:1.5}
+.trend-tag{display:inline-flex;align-items:center;gap:5px;font-family:var(--ff-display);font-weight:700;font-size:11.5px;margin-top:9px;padding:3px 9px;border-radius:999px}
+.archetype{display:flex;align-items:center;gap:11px;margin-bottom:11px}
+.archetype .badge-ar{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:0 0 40px}
+.archetype .badge-ar svg{width:21px;height:21px}
+.archetype .tt{font-family:var(--ff-display);font-weight:700;font-size:14px}
+.archetype .tt small{display:block;font-weight:500;font-size:11.5px;color:var(--muted);font-family:var(--ff-body);text-transform:none;letter-spacing:0}
+.tip{display:flex;gap:9px;font-size:12.5px;color:var(--ink);line-height:1.5;padding:9px 0;border-top:1px solid var(--line)}
+.tip:first-of-type{border-top:none}
+.tip .b{color:var(--brand);flex:0 0 auto;margin-top:1px}
+.mini-stat{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px;border-top:1px solid var(--line)}
+.mini-stat:first-child{border-top:none}
+.mini-stat .k{color:var(--muted)}
+.mini-stat .v{font-family:var(--ff-display);font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ============================= INSIGHT DASHBOARD ============================= */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:17px 18px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
+.kpi .k{font-size:12.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:7px;margin-bottom:10px}
+.kpi .k svg{width:15px;height:15px}
+.kpi .v{font-family:var(--ff-display);font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:14px;color:var(--muted);font-weight:600}
+.kpi .sub{font-size:12px;color:var(--muted);margin-top:7px}
+.kpi.accent-pos .v{color:var(--pos)} .kpi.accent-neg .v{color:var(--neg)} .kpi.accent-brand .v{color:var(--brand)}
+.ins-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:19px;box-shadow:var(--shadow-sm)}
+.panel h3{font-size:15px;margin-bottom:3px;display:flex;align-items:center;gap:8px}
+.panel .ph-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px}
+.bar-row{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.bar-row .lab{width:120px;flex:0 0 120px;font-size:13px;display:flex;align-items:center;gap:8px}
+.bar-track{flex:1;height:10px;background:var(--surface-2);border-radius:999px;overflow:hidden}
+.bar-fill{height:100%;border-radius:999px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.bar-row .cnt{width:38px;text-align:right;font-family:var(--ff-display);font-weight:700;font-variant-numeric:tabular-nums;font-size:13px}
+.attn{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer}
+.attn:first-of-type{border-top:none}
+.attn:hover{background:var(--brand-wash-2);margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:8px}
+.attn .av{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-weight:700;flex:0 0 36px;font-size:14px}
+.attn .nm{font-family:var(--ff-display);font-weight:700;font-size:13.5px}
+.attn .nt{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:30ch}
+.attn .sc{margin-left:auto;font-family:var(--ff-display);font-weight:800;font-variant-numeric:tabular-nums;font-size:15px;flex:0 0 auto}
+.trendchart{width:100%;height:150px}
+.legend{display:flex;gap:16px;margin-top:12px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+/* QR / WA */
+.qr-grid{display:flex;gap:18px;flex-wrap:wrap}
+.qr-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;width:300px;box-shadow:var(--shadow-sm)}
+.qr-card .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.qr-card h3{font-size:16px}
+.qr-card .stat{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;font-family:var(--ff-display)}
+.qr-img{width:100%;aspect-ratio:1;background:#fff;border:1px solid var(--line);border-radius:var(--r);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.qr-img img{width:100%;height:100%;object-fit:contain;padding:8px}
+.qr-wait{color:var(--muted);text-align:center;padding:30px 10px;font-size:13px}
+.connected-state{text-align:center;padding:46px 10px;color:var(--pos);font-family:var(--ff-display);font-weight:700}
+
+/* booking / schedule result cards */
+.res-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:14px;box-shadow:var(--shadow-sm)}
+.res-card .info{flex:1}
+.res-card .route{font-family:var(--ff-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+.res-card .det{font-size:12.5px;color:var(--muted);margin-top:4px;display:flex;flex-wrap:wrap;gap:5px 14px}
+.res-card .price{font-family:var(--ff-display);font-weight:800;font-size:16px;color:var(--brand-ink)}
+.seatmap-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;margin-top:16px;box-shadow:var(--shadow-sm)}
+.seatmap{display:grid;grid-template-columns:repeat(4,46px);gap:9px;margin:14px 0}
+.seat{width:46px;height:42px;border-radius:9px;font-family:var(--ff-display);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);transition:all .12s;font-variant-numeric:tabular-nums}
+.seat:hover:not(.taken){border-color:var(--brand);background:var(--brand-wash)}
+.seat.sel{background:var(--pos);border-color:var(--pos);color:#fff}
+.seat.taken{background:var(--surface-2);color:var(--muted-2);cursor:not-allowed;border-style:dashed}
+.seat-legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:6px}
+.seat-legend span{display:inline-flex;align-items:center;gap:6px}
+.seat-legend i{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid var(--line-strong)}
+
+.toast-wrap{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:var(--ink);color:#fff;padding:11px 18px;border-radius:11px;font-size:13.5px;font-weight:500;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:10px;animation:rise .25s ease}
+.toast.ok{background:#0E7A4E}.toast.err{background:#C4352D}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+@media(max-width:1180px){.ctx{display:none}}
+@media(max-width:1080px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.ins-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ============================= LOGIN ============================= -->
+<div id="login">
+  <div class="login-aside">
+    <div class="brand-lockup">
+      <span class="brand-mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M2 16h20"/><circle cx="7.5" cy="19" r="1.6"/><circle cx="16.5" cy="19" r="1.6"/><path d="M4 9h16"/></svg></span>
+      Halte
+    </div>
+    <div>
+      <div class="flap">Setiap pesan<br>punya <span>tujuan.</span></div>
+      <p class="sub">Konsol terpadu untuk layanan pelanggan WhatsApp, penjualan tiket AKAP & pariwisata, dan pembacaan sentimen pelanggan secara langsung.</p>
+      <div class="board">
+        <div class="board-row"><span class="led"></span><b>AI menjawab otomatis</b><span class="r">24 jam</span></div>
+        <div class="board-row"><span class="led"></span><b>Riwayat tersimpan aman</b><span class="r">anti hilang</span></div>
+        <div class="board-row"><span class="led"></span><b>Mood pelanggan terbaca</b><span class="r">real-time</span></div>
+      </div>
+    </div>
+    <div class="login-foot">Layanan AKAP & Pariwisata · ditenagai whatsapp-web.js</div>
+  </div>
+  <div class="login-main">
+    <div class="login-form">
+      <h2>Masuk ke konsol</h2>
+      <p class="lead">Kelola percakapan, tiket, dan performa tim dalam satu layar.</p>
+      <label class="fld" for="email">Email</label>
+      <input id="email" placeholder="nama@perusahaan.com" value="admin@bis.local" autocomplete="username" />
+      <label class="fld" for="password">Kata sandi</label>
+      <input id="password" type="password" placeholder="Masukkan kata sandi" value="admin123" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()" />
+      <button class="btn block" onclick="login()">Masuk</button>
+      <div class="cred-hint">Akun awal: <b>admin@bis.local</b> · <b>admin123</b> — ganti melalui menu Karyawan setelah masuk.</div>
+      <p id="loginErr"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= APP ============================= -->
+<div id="app" class="hidden">
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand-lockup">
+      <span class="brand-mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M2 16h20"/><circle cx="7.5" cy="19" r="1.6"/><circle cx="16.5" cy="19" r="1.6"/><path d="M4 9h16"/></svg></span>
+      Halte
+    </div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="globalSearch" placeholder="Cari pelanggan, nomor, atau kode booking…" autocomplete="off"
+             oninput="onSearch(this.value)" onfocus="onSearch(this.value)" onblur="setTimeout(()=>hideSearch(),180)"/>
+      <div id="searchPop" class="search-pop hidden"></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="conn-pill" id="connPill" title="Status koneksi WhatsApp"><span class="led down"></span><span id="connText">Memuat…</span></div>
+    <div class="whoami">
+      <div style="text-align:right">
+        <div class="nm" id="meName">—</div>
+        <div class="rl" id="meRole">—</div>
+      </div>
+      <div class="avatar" id="meAvatar">A</div>
+      <button class="icon-btn btn-ghost" title="Keluar" onclick="logout()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- NAV -->
+    <div class="nav">
+      <button data-view="chats" class="active" onclick="switchView('chats')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat<span class="badge hidden" id="navBadge">0</span>
+      </button>
+      <button data-view="dashboard" onclick="switchView('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Dasbor
+      </button>
+      <button data-view="insight" onclick="switchView('insight')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>
+        Insight
+      </button>
+      <button data-view="tiket" onclick="switchView('tiket')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z"/><path d="M13 5v14" stroke-dasharray="2 2"/></svg>
+        Tiket
+      </button>
+      <button data-view="kpi" onclick="switchView('kpi')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="10"/></svg>
+        KPI
+      </button>
+      <div class="sep"></div>
+      <button data-view="pay" onclick="switchView('pay')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Bayar
+      </button>
+      <button data-view="broadcast" onclick="switchView('broadcast')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+        Broadcast
+      </button>
+      <button data-view="kb" onclick="switchView('kb')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Materi
+      </button>
+      <button data-view="canned" onclick="switchView('canned')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+        Balasan
+      </button>
+      <button data-view="wa" onclick="switchView('wa')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
+        Koneksi
+      </button>
+      <button data-view="settings" onclick="switchView('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Pengaturan
+      </button>
+      <button data-view="agents" onclick="switchView('agents')" style="margin-top:auto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Tim
+      </button>
+    </div>
+
+    <!-- WORKSPACE -->
+    <div class="workspace" id="workspace">
+
+      <!-- ============ CHATS ============ -->
+      <div class="conv-pane" id="convPane">
+        <div class="conv-head">
+          <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Percakapan</h3>
+          <div class="filters">
+            <select id="filterAccount" onchange="loadConversations()"><option value="">Semua kanal</option></select>
+            <select id="filterMode" onchange="loadConversations()">
+              <option value="">Semua status</option>
+              <option value="human">Perlu agen</option>
+              <option value="ai">Mode AI</option>
+            </select>
+          </div>
+        </div>
+        <div class="conv-list" id="convList"></div>
+      </div>
+
+      <div class="chat" id="chatArea">
+        <div class="center-state" id="chatEmpty">
+          <div>
+            <div class="ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+            <h3>Pilih percakapan</h3>
+            <p>Pilih pelanggan di daftar untuk melihat riwayat chat dan pembacaan sentimennya.</p>
+          </div>
+        </div>
+        <div class="hidden" id="chatLive" style="display:flex;flex-direction:column;flex:1;min-height:0">
+          <div class="chat-top" id="chatTop"></div>
+          <div class="chat-scroll" id="msgs"></div>
+          <div class="composer hidden" id="composer">
+            <div class="qr-bar" id="qrBar"></div>
+            <div class="field">
+              <textarea id="msgInput" placeholder="Tulis balasan…  (Enter untuk kirim, Shift+Enter baris baru)"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}" oninput="autoGrow(this)"></textarea>
+              <button class="btn send" onclick="sendMsg()" title="Kirim"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INSIGHT CONTEXT PANEL (per chat) -->
+      <div class="ctx hidden" id="ctxPanel"></div>
+
+      <!-- ============ DASBOR OPERASIONAL ============ -->
+      <div class="view hidden" id="dashboardView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Ikhtisar Operasi</div>
+            <h2>Dasbor</h2>
+            <p>Denyut layanan hari ini: antrian yang menunggu, efektivitas AI, follow-up otomatis, dan penjualan tiket.</p>
+          </div>
+          <button class="btn-ghost btn-sm" onclick="loadDashboard()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.8-3.4L23 10M1 14l4.7 4.4A9 9 0 0 0 20.5 15"/></svg> Segarkan</button>
+        </div>
+        <div id="dashboardBody"><div class="empty">Memuat dasbor…</div></div>
+      </div>
+
+      <!-- ============ INSIGHT DASHBOARD ============ -->
+      <div class="view hidden" id="insightView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Intelijen Pelanggan</div>
+            <h2>Sentimen &amp; karakter pelanggan</h2>
+            <p>Pembacaan otomatis dari setiap percakapan: suasana hati pelanggan, arketipe perilaku, dan siapa yang butuh perhatian lebih dulu.</p>
+          </div>
+          <button class="btn-ghost btn-sm" onclick="loadInsights()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.8-3.4L23 10M1 14l4.7 4.4A9 9 0 0 0 20.5 15"/></svg> Segarkan</button>
+        </div>
+        <div id="insightBody"><div class="empty">Memuat intelijen…</div></div>
+      </div>
+
+      <!-- ============ KPI ============ -->
+      <div class="view hidden" id="kpiView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Kinerja Tim</div>
+            <h2>KPI karyawan</h2>
+            <p>Beban kerja, kecepatan respons pertama, dan skor kualitas komunikasi yang dinilai otomatis tiap percakapan selesai.</p>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>Karyawan</th><th>Ditangani</th><th>Diselesaikan</th><th>Respons pertama</th><th>Kualitas</th></tr></thead>
+            <tbody id="kpiBody"></tbody></table>
+        </div>
+      </div>
+
+      <!-- ============ KNOWLEDGE / MATERI ============ -->
+      <div class="view hidden" id="kbView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Materi AI</div>
+            <h2>Pengetahuan untuk AI</h2>
+            <p>Isi jadwal, harga, dan FAQ di sini. AI memakai materi ini untuk menjawab pelanggan secara akurat tanpa mengarang.</p>
+          </div>
+        </div>
+        <div class="form-card">
+          <h3>Tambah materi</h3>
+          <div class="stack">
+            <div class="row">
+              <div><label class="fld">Kategori</label><select id="kbCat"><option value="akap">AKAP</option><option value="pariwisata">Pariwisata</option><option value="umum">Umum</option></select></div>
+              <div style="flex:2"><label class="fld">Pertanyaan / topik</label><input id="kbQ" placeholder="mis. Apakah ada layanan antar-jemput?" /></div>
+            </div>
+            <div><label class="fld">Jawaban / informasi</label><textarea id="kbA" rows="3" placeholder="Jawaban yang akan dipakai AI…"></textarea></div>
+          </div>
+          <button class="btn btn-sm" style="margin-top:14px" onclick="addKb()">Tambah materi</button>
+        </div>
+        <div class="tbl-wrap" style="margin-top:14px">
+          <table><thead><tr><th style="width:130px">Kategori</th><th>Pertanyaan</th><th>Jawaban</th><th style="width:60px"></th></tr></thead>
+            <tbody id="kbBody"></tbody></table>
+        </div>
+      </div>
+
+      <!-- ============ CANNED REPLIES ============ -->
+      <div class="view hidden" id="cannedView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Balasan Cepat</div>
+            <h2>Template jawaban</h2>
+            <p>Simpan kalimat yang sering dipakai. Saat live chat, ketuk satu pil untuk menyisipkannya ke kolom balasan.</p>
+          </div>
+        </div>
+        <div class="form-card">
+          <h3>Tambah balasan cepat</h3>
+          <div class="stack">
+            <div><label class="fld">Judul singkat</label><input id="qrTitle" placeholder="mis. Konfirmasi pembayaran" /></div>
+            <div><label class="fld">Isi pesan</label><textarea id="qrBody" rows="3" placeholder="Teks yang akan disisipkan…"></textarea></div>
+          </div>
+          <button class="btn btn-sm" style="margin-top:14px" onclick="addQuick()">Simpan balasan</button>
+        </div>
+        <div id="cannedList" style="margin-top:16px"></div>
+      </div>
+
+      <!-- ============ PEMBAYARAN ============ -->
+      <div class="view hidden" id="payView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Keuangan</div>
+            <h2>Pembayaran</h2>
+            <p>Tagihan yang dibuat untuk booking. Verifikasi pembayaran masuk agar status booking menjadi lunas.</p>
+          </div>
+          <button class="btn-ghost btn-sm" onclick="loadPayments()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.8-3.4L23 10M1 14l4.7 4.4A9 9 0 0 0 20.5 15"/></svg> Segarkan</button>
+        </div>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>Ref</th><th>Booking</th><th>Customer</th><th>Nilai</th><th>Status</th><th></th></tr></thead>
+            <tbody id="payBody"></tbody></table>
+        </div>
+      </div>
+
+      <!-- ============ BROADCAST ============ -->
+      <div class="view hidden" id="broadcastView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Pemasaran</div>
+            <h2>Broadcast</h2>
+            <p>Kirim promo/info ke banyak pelanggan dengan aman — dikirim bertahap dengan jeda agar nomor tidak diblokir WhatsApp.</p>
+          </div>
+        </div>
+        <div class="form-card">
+          <h3>Buat broadcast baru</h3>
+          <div class="stack">
+            <div class="row">
+              <div><label class="fld">Kirim lewat nomor</label><select id="bcSession"></select></div>
+              <div><label class="fld">Target penerima</label>
+                <select id="bcAudience">
+                  <option value="all">Semua pelanggan</option>
+                  <option value="akap_buyers">Pernah beli tiket AKAP</option>
+                  <option value="pariwisata_buyers">Pernah sewa Pariwisata</option>
+                  <option value="negative">Sentimen negatif (perlu perhatian)</option>
+                </select></div>
+            </div>
+            <div><label class="fld">Judul (internal)</label><input id="bcTitle" placeholder="mis. Promo Lebaran" /></div>
+            <div><label class="fld">Isi pesan</label><textarea id="bcBody" rows="4" placeholder="Tulis pesan promo… (hindari spam agar nomor aman)"></textarea></div>
+          </div>
+          <button class="btn btn-sm" style="margin-top:14px" onclick="createBroadcast()">Buat draft</button>
+          <p style="font-size:11.5px;color:var(--muted-2);margin-top:8px">⚠️ Gunakan dengan bijak. Blast massal berisiko membuat nomor WhatsApp diblokir. Sistem sudah membatasi laju pengiriman.</p>
+        </div>
+        <div id="bcList" style="margin-top:16px"></div>
+      </div>
+
+      <!-- ============ PENGATURAN ============ -->
+      <div class="view hidden" id="settingsView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Konfigurasi</div>
+            <h2>Pengaturan</h2>
+            <p>Jam kerja (untuk balasan di luar jam), info pembayaran (QRIS/bank), dan ekspor laporan.</p>
+          </div>
+        </div>
+        <div id="settingsBody"><div class="empty">Memuat pengaturan…</div></div>
+      </div>
+
+      <!-- ============ TIKET ============ -->
+      <div class="view hidden" id="tiketView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Penjualan</div>
+            <h2>Tiket &amp; booking</h2>
+            <p>Cari jadwal AKAP dan pilih kursi, buat carter pariwisata, lalu kelola semua pesanan di satu tempat.</p>
+          </div>
+          <div class="seg" id="tiketTabs">
+            <button class="active" data-tab="akap" onclick="tiketTab('akap')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M2 16h20"/><circle cx="7.5" cy="19" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/></svg> AKAP</button>
+            <button data-tab="wisata" onclick="tiketTab('wisata')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg> Pariwisata</button>
+            <button data-tab="booking" onclick="tiketTab('booking')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7h18v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7h6v8H9z"/><path d="M9 7V4h6v3"/></svg> Booking</button>
+            <button data-tab="master" onclick="tiketTab('master')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Data Master</button>
+          </div>
+        </div>
+
+        <!-- AKAP -->
+        <div id="tkAkap">
+          <div class="form-card">
+            <h3>Cari jadwal AKAP</h3>
+            <div class="row" style="margin-bottom:10px">
+              <div><label class="fld">Asal</label><input id="akOrigin" placeholder="mis. Jakarta" /></div>
+              <div><label class="fld">Tujuan</label><input id="akDest" placeholder="mis. Surabaya" /></div>
+              <div><label class="fld">Tanggal</label><input id="akDate" type="date" /></div>
+            </div>
+            <button class="btn btn-sm" onclick="searchAkap()">Cari jadwal</button>
+          </div>
+          <div id="akapResults"></div>
+          <div id="seatMapWrap" class="seatmap-wrap hidden">
+            <h3 style="font-size:15px;margin-bottom:4px">Peta kursi</h3>
+            <div style="color:var(--muted);font-size:13px;margin-bottom:10px" id="seatSchedLabel"></div>
+            <div class="seat-legend">
+              <span><i style="background:var(--surface)"></i> Tersedia</span>
+              <span><i style="background:var(--pos);border-color:var(--pos)"></i> Dipilih</span>
+              <span><i style="background:var(--surface-2);border-style:dashed"></i> Terisi</span>
+            </div>
+            <div class="seatmap" id="seatMap"></div>
+            <div class="row" style="margin:12px 0">
+              <div><label class="fld">No. HP pelanggan</label><input id="akCustPhone" placeholder="628…" /></div>
+              <div><label class="fld">Nama pelanggan</label><input id="akCustName" placeholder="Nama" /></div>
+            </div>
+            <button class="btn btn-sm btn-ok" onclick="bookAkap()">Buat booking · <span id="seatSel">0</span> kursi</button>
+          </div>
+        </div>
+
+        <!-- PARIWISATA -->
+        <div id="tkWisata" class="hidden"><div id="charterList"></div></div>
+
+        <!-- BOOKING -->
+        <div id="tkBooking" class="hidden">
+          <div class="tbl-wrap">
+            <table><thead><tr><th>Kode</th><th>Jenis</th><th>Pelanggan</th><th>Detail</th><th>Total</th><th>Status</th><th>Tagihan</th></tr></thead>
+              <tbody id="bookingBody"></tbody></table>
+          </div>
+        </div>
+
+        <!-- MASTER -->
+        <div id="tkMaster" class="hidden">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="form-card">
+              <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20l-5.5 2 1-5.5L18 2l4 4z"/></svg> Tambah rute</h3>
+              <div class="stack">
+                <div class="row"><div><label class="fld">Asal</label><input id="mrOrigin" placeholder="Asal"/></div><div><label class="fld">Tujuan</label><input id="mrDest" placeholder="Tujuan"/></div></div>
+                <div class="row"><div><label class="fld">Jarak (km)</label><input id="mrKm" type="number" placeholder="0"/></div><div><label class="fld">Harga dasar/kursi</label><input id="mrPrice" type="number" placeholder="0"/></div></div>
+              </div>
+              <button class="btn-ghost btn-sm" style="margin-top:12px" onclick="addRoute()">+ Tambah rute</button>
+            </div>
+            <div class="form-card">
+              <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M2 16h20"/></svg> Tambah bus</h3>
+              <div class="stack">
+                <div class="row"><div><label class="fld">Kode</label><input id="mbCode" placeholder="B-7501-AK"/></div><div><label class="fld">Nama</label><input id="mbName" placeholder="Nama bus"/></div></div>
+                <div class="row"><div><label class="fld">Kelas</label><input id="mbClass" placeholder="Executive"/></div><div><label class="fld">Jumlah kursi</label><input id="mbSeats" type="number" value="40"/></div></div>
+              </div>
+              <button class="btn-ghost btn-sm" style="margin-top:12px" onclick="addBus()">+ Tambah bus</button>
+            </div>
+            <div class="form-card">
+              <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Tambah jadwal AKAP</h3>
+              <div class="stack">
+                <div class="row"><div><label class="fld">Rute</label><select id="msRoute"></select></div><div><label class="fld">Bus</label><select id="msBus"></select></div></div>
+                <div class="row"><div><label class="fld">Tanggal</label><input id="msDate" type="date"/></div><div><label class="fld">Jam</label><input id="msTime" type="time"/></div></div>
+                <div><label class="fld">Harga/kursi</label><input id="msPrice" type="number" placeholder="0"/></div>
+              </div>
+              <button class="btn-ghost btn-sm" style="margin-top:12px" onclick="addSchedule()">+ Tambah jadwal</button>
+            </div>
+            <div class="form-card">
+              <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg> Tambah paket pariwisata</h3>
+              <div class="stack">
+                <div class="row"><div><label class="fld">Nama paket</label><input id="mcName" placeholder="Carter harian"/></div><div><label class="fld">Kelas bus</label><input id="mcClass" placeholder="Executive"/></div></div>
+                <div class="row"><div><label class="fld">Harga/hari</label><input id="mcPrice" type="number" placeholder="0"/></div><div><label class="fld">Kapasitas</label><input id="mcCap" type="number" placeholder="0"/></div></div>
+                <div><label class="fld">Termasuk</label><input id="mcInc" placeholder="BBM, sopir, tol…"/></div>
+              </div>
+              <button class="btn-ghost btn-sm" style="margin-top:12px" onclick="addCharter()">+ Tambah paket</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ KONEKSI WA ============ -->
+      <div class="view hidden" id="waView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Integrasi</div>
+            <h2>Koneksi WhatsApp</h2>
+            <p>Pindai QR sekali per nomor dari WhatsApp → Perangkat Tertaut. Koneksi dipegang layanan WA, jadi cukup satu kali pindai per nomor.</p>
+          </div>
+        </div>
+        <div class="qr-grid" id="qrGrid"></div>
+      </div>
+
+      <!-- ============ AGENTS ============ -->
+      <div class="view hidden" id="agentsView">
+        <div class="view-head">
+          <div>
+            <div class="eyebrow">Pengaturan</div>
+            <h2>Tim &amp; karyawan</h2>
+            <p>Tambah akun karyawan agar mereka bisa masuk, mengambil alih percakapan, dan dinilai kinerjanya.</p>
+          </div>
+        </div>
+        <div class="form-card">
+          <h3>Tambah karyawan</h3>
+          <div class="stack">
+            <div class="row"><div><label class="fld">Nama</label><input id="agName" placeholder="Nama lengkap" /></div><div><label class="fld">Email</label><input id="agEmail" placeholder="nama@perusahaan.com" /></div></div>
+            <div><label class="fld">Kata sandi</label><input id="agPass" type="password" placeholder="Kata sandi awal" /></div>
+          </div>
+          <button class="btn btn-sm" style="margin-top:14px" onclick="addAgent()">Tambah karyawan</button>
+        </div>
+        <div class="tbl-wrap" style="margin-top:14px">
+          <table><thead><tr><th>Nama</th><th>Email</th><th>Peran</th><th>Status</th></tr></thead>
+            <tbody id="agBody"></tbody></table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ============================= CORE ============================= */
+let token=null, me=null, socket=null, currentConv=null, accounts=[], quickReplies=[], activeView='chats';
+const api=(p,o={})=>fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...(o.headers||{})}}).then(r=>r.json());
+const $=id=>document.getElementById(id);
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const rupiah=n=>'Rp'+Number(n||0).toLocaleString('id-ID');
+const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+function toast(msg,kind=''){
+  const el=document.createElement('div'); el.className='toast '+kind;
+  const ic=kind==='ok'?'M20 6 9 17l-5-5':kind==='err'?'M18 6 6 18M6 6l12 12':'M12 8v4m0 4h.01';
+  el.innerHTML=`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${ic}"/></svg>${esc(msg)}`;
+  $('toastWrap').appendChild(el); setTimeout(()=>el.remove(),3200);
+}
+function autoGrow(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,140)+'px';}
+
+/* ---------- sentiment helpers (shared) ---------- */
+const moodClass=s=>s==null?'none':s>=0.25?'pos':s<=-0.25?'neg':'neu';
+const moodColor=s=>s==null?'var(--muted-2)':s>=0.15?'var(--pos)':s<=-0.15?'var(--neg)':'var(--neu)';
+function moodLabel(s){ if(s==null)return 'Belum terbaca'; if(s>=0.45)return 'Sangat positif'; if(s>=0.15)return 'Positif'; if(s>-0.1)return 'Netral'; if(s>-0.4)return 'Negatif'; return 'Sangat negatif'; }
+// sparkline path from a series of -1..1 values
+function sparkPath(series,w,h,pad=2){
+  if(!series.length) return '';
+  const n=series.length, span=Math.max(1,n-1);
+  const x=i=>pad+(i/span)*(w-pad*2);
+  const y=v=>{const t=(v+1)/2; return h-pad-t*(h-pad*2);};
+  return series.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+}
+const BEHAVIOR={
+  ramah:{label:'Ramah',sub:'Hangat & kooperatif',color:'var(--pos)',wash:'var(--pos-wash)',icon:'M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',tips:['Balas dengan kehangatan yang sama — pelanggan ini mudah diajak kerja sama.','Peluang bagus untuk menawarkan layanan tambahan atau upsell.']},
+  mudah_marah:{label:'Mudah marah',sub:'Cepat tersulut, perlu hati-hati',color:'var(--neg)',wash:'var(--neg-wash)',icon:'M8 15s1.5-2 4-2 4 2 4 2M9 9h.01M15 9h.01',tips:['Akui keluhannya lebih dulu sebelum memberi solusi.','Hindari kalimat membela diri; tetap tenang, singkat, dan solutif.','Pertimbangkan eskalasi cepat ke staf senior bila memburuk.']},
+  cerewet:{label:'Cerewet',sub:'Banyak bertanya & detail',color:'var(--neu)',wash:'var(--neu-wash)',icon:'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',tips:['Jawab terstruktur dengan poin agar mudah dicerna.','Antisipasi pertanyaan lanjutan dengan info lengkap di awal.']},
+  to_the_point:{label:'To the point',sub:'Ingin cepat & ringkas',color:'var(--brand)',wash:'var(--brand-wash)',icon:'M13 2 3 14h9l-1 8 10-12h-9z',tips:['Langsung ke inti: harga, jadwal, ketersediaan.','Hindari basa-basi panjang; berikan jawaban padat.']},
+  netral:{label:'Netral',sub:'Belum ada pola menonjol',color:'var(--muted)',wash:'var(--surface-2)',icon:'M8 12h8M9 9h.01M15 9h.01',tips:['Layani standar dengan ramah; pola akan terbaca seiring percakapan.']},
+  belum_dikenali:{label:'Belum dikenali',sub:'Data belum cukup',color:'var(--muted)',wash:'var(--surface-2)',icon:'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01',tips:['Profil perilaku terbentuk otomatis setelah beberapa pesan.']},
+};
+const behaviorOf=t=>BEHAVIOR[t]||BEHAVIOR.netral;
+
+/* ============================= AUTH ============================= */
+async function login(){
+  const email=$('email').value, password=$('password').value;
+  $('loginErr').textContent='';
+  let r; try{ r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})}).then(r=>r.json()); }
+  catch{ $('loginErr').textContent='Tidak dapat terhubung ke server.'; return; }
+  if(r.error){ $('loginErr').textContent=r.error; return; }
+  token=r.token; me=r.agent;
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('meName').textContent=me.name; $('meRole').textContent=me.role==='admin'?'Administrator':'Agen';
+  $('meAvatar').textContent=initials(me.name);
+  initSocket(); await loadAccounts(); await loadConversations(); refreshConnPill(); loadQuickReplies();
+}
+function logout(){ location.reload(); }
+
+function initSocket(){
+  socket=io({ auth:{ token } });
+  // heartbeat presence tiap 30 dtk agar dianggap online (eskalasi pintar)
+  setInterval(()=>{ try{ socket.emit('agent:heartbeat'); }catch{} }, 30000);
+  socket.on('message:new',e=>{ if(currentConv&&e.conversationId===currentConv.id){appendMessage(e.message); refreshCtxPanel();} markDirty(); if(activeView==='dashboard')loadDashboard(); });
+  socket.on('conversation:handover',e=>{ markDirty(); if(activeView==='dashboard')loadDashboard(); if(e&&e.assignedAgent&&me&&e.assignedAgent===me.id){ toast('Percakapan baru diberikan ke Anda.'); } });
+  socket.on('conversation:update',()=>{ markDirty(); if(activeView==='dashboard')loadDashboard(); });
+  socket.on('agent:assigned',e=>{ if(activeView==='dashboard')loadDashboard(); });
+  socket.on('conversation:nudge',e=>{ if(activeView==='dashboard')loadDashboard(); toast('AI menyenggol pelanggan yang menunggu agen.'); });
+  socket.on('booking:new',()=>{ if(activeView==='dashboard')loadDashboard(); });
+  socket.on('booking:update',()=>{ if(activeView==='dashboard')loadDashboard(); if(activeView==='pay')loadPayments(); });
+  socket.on('payment:update',()=>{ if(activeView==='pay')loadPayments(); if(activeView==='dashboard')loadDashboard(); });
+  socket.on('payment:proof',e=>{ if(activeView==='pay')loadPayments(); const m={match:'cocok',mismatch:'perlu dicek',unclear:'cek manual'}[e.match]||''; toast('Bukti transfer masuk ('+m+') — cek tab Bayar.'); });
+  socket.on('csat:new',e=>{ if(activeView==='dashboard')loadDashboard(); if(activeView==='kpi')loadKpi(); toast('Pelanggan memberi rating: '+e.score+'/5 ⭐'); });
+  socket.on('broadcast:update',()=>{ if(activeView==='broadcast')loadBroadcasts(); });
+  socket.on('broadcast:progress',()=>{ if(activeView==='broadcast')loadBroadcasts(); });
+  socket.on('conversation:closed',e=>{
+    markDirty();
+    if(activeView==='dashboard')loadDashboard();
+    if(currentConv&&e.conversationId===currentConv.id){ toast('Sesi ditutup otomatis (tidak ada balasan).'); }
+  });
+  socket.on('wa:status',()=>{ refreshConnPill(); if(activeView==='wa') loadWa(); });
+}
+function markDirty(){ if(activeView==='chats') loadConversations(); updateBadge(); }
+
+/* ============================= VIEW SWITCH ============================= */
+const VIEWS=['dashboard','insight','tiket','kpi','pay','broadcast','kb','canned','wa','settings','agents'];
+function switchView(v){
+  activeView=v;
+  document.querySelectorAll('.nav button[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  const isChat=v==='chats';
+  $('convPane').classList.toggle('hidden',!isChat);
+  $('chatArea').classList.toggle('hidden',!isChat);
+  $('ctxPanel').classList.toggle('hidden', !(isChat && currentConv));
+  VIEWS.forEach(x=>$(x+'View').classList.toggle('hidden',v!==x));
+  if(v==='dashboard')loadDashboard(); if(v==='insight')loadInsights(); if(v==='kpi')loadKpi(); if(v==='kb')loadKb();
+  if(v==='canned')loadCanned(); if(v==='wa')loadWa(); if(v==='agents')loadAgents();
+  if(v==='pay')loadPayments(); if(v==='broadcast')loadBroadcasts(); if(v==='settings')loadSettings();
+  if(v==='tiket')tiketTab('akap');
+}
+
+/* ============================= CONNECTION PILL ============================= */
+async function refreshConnPill(){
+  try{
+    const list=await api('/accounts'); accounts=list;
+    const up=list.filter(a=>a.status==='connected').length;
+    const led=$('connPill').querySelector('.led');
+    if(up===list.length&&list.length){ led.className='led up'; $('connText').textContent='Semua kanal aktif'; }
+    else if(up>0){ led.className='led up'; $('connText').textContent=up+'/'+list.length+' kanal aktif'; }
+    else { led.className='led down'; $('connText').textContent='Belum ada kanal aktif'; }
+  }catch{}
+}
+
+/* ============================= CONVERSATIONS LIST ============================= */
+async function loadAccounts(){
+  accounts=await api('/accounts');
+  $('filterAccount').innerHTML='<option value="">Semua kanal</option>'+accounts.map(a=>`<option value="${a.id}">${esc(a.label)}</option>`).join('');
+}
+async function updateBadge(){
+  try{
+    const list=await api('/conversations?status=pending');
+    const n=list.length, b=$('navBadge');
+    b.textContent=n; b.classList.toggle('hidden',n===0);
+  }catch{}
+}
+async function loadConversations(){
+  const acc=$('filterAccount').value, mode=$('filterMode').value;
+  let q='/conversations?'; if(acc)q+='accountId='+acc+'&'; if(mode)q+='mode='+mode+'&';
+  const list=await api(q);
+  updateBadge();
+  if(!list.length){ $('convList').innerHTML=`<div class="empty"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h4>Belum ada percakapan</h4><p style="font-size:12.5px">Chat masuk akan tampil di sini.</p></div>`; return; }
+  $('convList').innerHTML=list.map(c=>{
+    const tag=c.status==='pending'?'<span class="chip pending">Perlu agen</span>':(c.mode==='human'?'<span class="chip human">Agen</span>':'<span class="chip ai">AI</span>');
+    const s=c.avg_sentiment==null?null:Number(c.avg_sentiment);
+    const beh=c.behavior_tag&&c.behavior_tag!=='netral'?`<span class="chip soft" style="color:${behaviorOf(c.behavior_tag).color}">${behaviorOf(c.behavior_tag).label}</span>`:'';
+    return `<div class="conv ${currentConv&&currentConv.id===c.id?'active':''}" onclick='openConv(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+      <div class="l1"><span class="nm">${esc(c.customer_name||c.phone||'Tanpa nama')}</span>${tag}</div>
+      <div class="l2"><span class="chan">${esc(c.account_label)}</span></div>
+      <div class="l3"><span class="dotmood ${moodClass(s)}" title="${moodLabel(s)}"></span>${beh||`<span style="font-size:11.5px;color:var(--muted-2)">${moodLabel(s)}</span>`}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================= CHAT ============================= */
+async function openConv(c){
+  currentConv=c; loadConversations();
+  $('chatEmpty').classList.add('hidden'); $('chatLive').classList.remove('hidden');
+  const isHuman=c.mode==='human';
+  const beh=c.behavior_tag&&c.behavior_tag!=='netral'?`<span class="chip soft" style="color:${behaviorOf(c.behavior_tag).color}">${behaviorOf(c.behavior_tag).label}</span>`:'';
+  $('chatTop').innerHTML=`
+    <div class="who">
+      <div class="avatar" style="background:${moodColor(c.avg_sentiment==null?null:+c.avg_sentiment)}">${initials(c.customer_name||c.phone)}</div>
+      <div>
+        <div class="nm">${esc(c.customer_name||c.phone||'Tanpa nama')}</div>
+        <div class="meta">${esc(c.account_label)} · ${esc(c.phone||'')} ${beh}</div>
+      </div>
+    </div>
+    <div class="actions">
+      ${isHuman?'<button class="btn-ghost btn-sm" onclick="release()">↩ Kembali ke AI</button>':'<button class="btn-warn btn-sm" onclick="take()">Ambil alih</button>'}
+      <button class="btn-ok btn-sm" onclick="resolve()">Selesai</button>
+    </div>`;
+  $('composer').classList.toggle('hidden',!isHuman);
+  if(isHuman) renderQuickBar();
+  $('ctxPanel').classList.remove('hidden');
+  const msgs=await api('/conversations/'+c.id+'/messages');
+  renderMessages(msgs);
+  refreshCtxPanel();
+}
+function renderMessages(msgs){
+  const box=$('msgs'); box.innerHTML='';
+  if(!msgs.length){ box.innerHTML='<div class="center-state"><p>Belum ada pesan dalam percakapan ini.</p></div>'; return; }
+  let lastDay='';
+  msgs.forEach(m=>{
+    const day=new Date(m.created_at).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long'});
+    if(day!==lastDay){ lastDay=day; const d=document.createElement('div'); d.className='daysep'; d.textContent=day; box.appendChild(d); }
+    box.appendChild(msgEl(m));
+  });
+  box.scrollTop=box.scrollHeight;
+}
+function mediaHtml(m){
+  if(!m.media_url)return '';
+  const t=(m.media_type||'').toLowerCase();
+  if(t==='image'||t==='sticker') return `<img src="${m.media_url}" onclick="window.open('${m.media_url}')" />`;
+  if(t==='audio'||t==='ptt') return `<audio controls src="${m.media_url}"></audio>`;
+  if(t==='video') return `<video controls src="${m.media_url}"></video>`;
+  return `<a href="${m.media_url}" target="_blank">📎 ${esc(m.media_url.split('/').pop())}</a><br>`;
+}
+function msgEl(m){
+  const out=m.direction!=='in';
+  const row=document.createElement('div'); row.className='row-msg '+(out?'out':'in');
+  const kind=m.sender_type==='ai'?'ai':(m.sender_type==='agent'?'agent':'');
+  const who=m.sender_type==='ai'?'AI':(m.sender_type==='agent'?(m.agent_name||'Agen'):'');
+  const time=new Date(m.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+  const bub=document.createElement('div'); bub.className='bub '+(out?('out '+kind):'in');
+  bub.innerHTML=`${mediaHtml(m)}${esc(m.body)}<div class="meta">${who?esc(who)+' · ':''}${time}</div>`;
+  row.appendChild(bub); return row;
+}
+function appendMessage(m){
+  const box=$('msgs'); if(box.querySelector('.center-state'))box.innerHTML='';
+  box.appendChild(msgEl(m)); box.scrollTop=box.scrollHeight;
+}
+async function sendMsg(){
+  const t=$('msgInput').value.trim(); if(!t||!currentConv)return;
+  $('msgInput').value=''; autoGrow($('msgInput'));
+  await api('/conversations/'+currentConv.id+'/send',{method:'POST',body:JSON.stringify({text:t})});
+}
+async function take(){ await api('/conversations/'+currentConv.id+'/take',{method:'POST'}); currentConv.mode='human'; openConv(currentConv); toast('Percakapan diambil alih','ok'); }
+async function release(){ await api('/conversations/'+currentConv.id+'/release',{method:'POST'}); currentConv.mode='ai'; openConv(currentConv); toast('Dikembalikan ke AI'); }
+async function resolve(){
+  await api('/conversations/'+currentConv.id+'/resolve',{method:'POST'});
+  toast('Percakapan diselesaikan','ok'); currentConv=null;
+  $('chatLive').classList.add('hidden'); $('chatEmpty').classList.remove('hidden');
+  $('ctxPanel').classList.add('hidden'); loadConversations();
+}
+
+/* ---------- quick reply bar in composer ---------- */
+function renderQuickBar(){
+  const bar=$('qrBar');
+  if(!quickReplies.length){ bar.innerHTML=''; return; }
+  bar.innerHTML=quickReplies.slice(0,8).map(q=>`<span class="qr-pill" onclick="insertQuick(${q.id})" title="${esc(q.body)}">${esc(q.title)}</span>`).join('');
+}
+function insertQuick(id){
+  const q=quickReplies.find(x=>x.id===id); if(!q)return;
+  const ta=$('msgInput'); ta.value=(ta.value?ta.value+'\n':'')+q.body; autoGrow(ta); ta.focus();
+}
+async function loadQuickReplies(){ try{ quickReplies=await api('/quick-replies'); if(currentConv&&currentConv.mode==='human')renderQuickBar(); }catch{} }
+
+/* ============================= SIGNATURE: CHAT SENTIMENT CONTEXT PANEL ============================= */
+function moodDial(score){
+  // score -1..1 -> arc. returns svg
+  const t=score==null?0.5:(score+1)/2; // 0..1
+  const r=40, c=2*Math.PI*r, off=c*(1-t*0.75); // 0.75 = 270deg sweep
+  const col=moodColor(score);
+  const display=score==null?'–':(score>0?'+':'')+score.toFixed(2);
+  return `<div class="dial">
+    <svg width="92" height="92" viewBox="0 0 92 92">
+      <circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--line)" stroke-width="8" stroke-linecap="round"
+        stroke-dasharray="${(c*0.75).toFixed(1)} ${c}" transform="rotate(135 46 46)"/>
+      <circle cx="46" cy="46" r="${r}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round"
+        stroke-dasharray="${(c*0.75*t).toFixed(1)} ${c}" transform="rotate(135 46 46)" style="transition:stroke-dasharray .6s cubic-bezier(.2,.8,.2,1)"/>
+    </svg>
+    <div class="lbl"><b style="color:${col}">${display}</b><small>skor mood</small></div>
+  </div>`;
+}
+async function refreshCtxPanel(){
+  if(!currentConv){ return; }
+  const c=currentConv;
+  let ins={count:0,avg:null,trend:'stabil',series:[]};
+  try{ ins=await api('/conversations/'+c.id+'/insight'); }catch{}
+  const beh=behaviorOf(c.behavior_tag);
+  const score=ins.avg!=null?ins.avg:(c.avg_sentiment!=null?+c.avg_sentiment:null);
+  const trendMap={membaik:{t:'Membaik',c:'var(--pos)',w:'var(--pos-wash)',i:'M3 17l6-6 4 4 8-8'},memburuk:{t:'Memburuk',c:'var(--neg)',w:'var(--neg-wash)',i:'M3 7l6 6 4-4 8 8'},stabil:{t:'Stabil',c:'var(--muted)',w:'var(--surface-2)',i:'M3 12h18'}};
+  const tr=trendMap[ins.trend]||trendMap.stabil;
+  const spark=ins.series.length>1?`<svg class="spark" viewBox="0 0 220 40" preserveAspectRatio="none" style="height:40px;width:100%;margin-top:10px">
+      <line x1="0" y1="20" x2="220" y2="20" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+      <path d="${sparkPath(ins.series,220,40,4)}" fill="none" stroke="${moodColor(score)}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>`:'<div style="color:var(--muted-2);font-size:12px;margin-top:10px">Tren muncul setelah beberapa pesan.</div>';
+
+  // Kesan kualitatif customer (dari AI) — inti yang menjelaskan "gimana kesannya".
+  const imp=ins.impression;
+  const feelColor={positif:'var(--pos)',negatif:'var(--neg)',campuran:'var(--neu)',netral:'var(--muted)'};
+  const impBlock=imp?`
+    <div style="margin-top:12px;padding:12px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:11px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+        <span style="width:8px;height:8px;border-radius:50%;background:${feelColor[imp.feeling]||'var(--muted)'};flex:none"></span>
+        <b style="font-size:13px;color:${feelColor[imp.feeling]||'var(--ink)'}">${esc(imp.headline||'')}</b>
+      </div>
+      ${imp.summary?`<div style="font-size:12.5px;color:var(--muted);line-height:1.55">${esc(imp.summary)}</div>`:''}
+      ${(imp.signals&&imp.signals.length)?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${imp.signals.map(s=>`<div style="font-size:11.5px;color:var(--muted-2);display:flex;gap:6px"><span style="color:${feelColor[imp.feeling]||'var(--muted-2)'}">›</span><span>${esc(s)}</span></div>`).join('')}</div>`:''}
+    </div>`:'';
+
+  $('ctxPanel').innerHTML=`
+    <div class="ctx-card">
+      <h4 style="display:flex;align-items:center;justify-content:space-between">Pembacaan mood
+        <a href="#" onclick="reanalyzeConv(event)" style="font-size:11px;font-weight:500;color:var(--brand);text-decoration:none" title="Nilai ulang semua pesan dengan model terbaru">↻ analisis ulang</a>
+      </h4>
+      <div class="dial-wrap">
+        ${moodDial(score)}
+        <div class="mood-read">
+          <div class="tt" style="color:${moodColor(score)}">${moodLabel(score)}</div>
+          <div class="ds">Berdasarkan ${ins.count||0} pesan pelanggan dalam percakapan ini.</div>
+          <span class="trend-tag" style="color:${tr.c};background:${tr.w}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${tr.i}"/></svg>${tr.t}</span>
+        </div>
+      </div>
+      ${impBlock}
+      ${spark}
+    </div>
+
+    <div class="ctx-card">
+      <h4>Arketipe perilaku</h4>
+      <div class="archetype">
+        <div class="badge-ar" style="background:${beh.wash};color:${beh.color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="${beh.icon}"/></svg></div>
+        <div class="tt" style="color:${beh.color}">${beh.label}<small>${beh.sub}</small></div>
+      </div>
+      ${c.behavior_note?`<div style="font-size:12.5px;color:var(--muted);line-height:1.5;padding:8px 0;border-top:1px solid var(--line)">${esc(c.behavior_note)}</div>`:''}
+    </div>
+
+    <div class="ctx-card">
+      <h4>Saran pendekatan</h4>
+      ${beh.tips.map(t=>`<div class="tip"><span class="b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span>${t}</span></div>`).join('')}
+    </div>
+
+    <div class="ctx-card">
+      <h4>Ringkasan pelanggan</h4>
+      <div class="mini-stat"><span class="k">Total chat</span><span class="v num">${c.total_chats||0}</span></div>
+      <div class="mini-stat"><span class="k">Rata-rata mood</span><span class="v num" style="color:${moodColor(c.avg_sentiment==null?null:+c.avg_sentiment)}">${c.avg_sentiment==null?'–':(+c.avg_sentiment>0?'+':'')+(+c.avg_sentiment).toFixed(2)}</span></div>
+      <div class="mini-stat"><span class="k">Kanal</span><span class="v" style="font-size:13px">${esc(c.account_label)}</span></div>
+    </div>`;
+}
+// Paksa nilai ulang semua pesan percakapan aktif dengan model sentimen terbaru.
+async function reanalyzeConv(ev){
+  if(ev) ev.preventDefault();
+  if(!currentConv) return;
+  toast('Menganalisis ulang percakapan…');
+  try{
+    const r=await api('/conversations/'+currentConv.id+'/reanalyze',{method:'POST'});
+    if(r.error) return toast(r.error,'err');
+    toast('Selesai — '+ (r.rescored||0) +' pesan dinilai ulang.','ok');
+    refreshCtxPanel();
+  }catch{ toast('Gagal menganalisis ulang.','err'); }
+}
+
+/* ============================= INSIGHT DASHBOARD ============================= */
+async function loadInsights(){
+  let d; try{ d=await api('/insights/overview'); }catch{ $('insightBody').innerHTML='<div class="empty">Gagal memuat data.</div>'; return; }
+  const s=d.sentiment||{}; const tot=+s.total||0;
+  const pos=+s.positif||0, neu=+s.netral||0, neg=+s.negatif||0, unk=+s.belum_dinilai||0;
+  const ratio=v=>tot?Math.round(v/tot*100):0;
+  const avg=s.rata_rata==null?null:+s.rata_rata;
+
+  // behavior bars
+  const behMax=Math.max(1,...(d.behavior||[]).map(b=>+b.n));
+  const behRows=(d.behavior||[]).map(b=>{const bo=behaviorOf(b.tag);return `
+    <div class="bar-row"><div class="lab"><span class="dotmood" style="background:${bo.color}"></span>${bo.label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(+b.n/behMax*100)}%;background:${bo.color}"></div></div>
+      <div class="cnt num">${b.n}</div></div>`;}).join('')||'<div class="empty" style="padding:14px">Belum ada data.</div>';
+
+  // attention list
+  const attn=(d.attention||[]).map(a=>{const sc=a.avg_sentiment==null?null:+a.avg_sentiment;return `
+    <div class="attn" onclick="jumpToCustomer('${a.wa_id}')">
+      <div class="av" style="background:${a.behavior_tag==='mudah_marah'?'var(--neg-wash)':moodColor(sc)+'22'};color:${a.behavior_tag==='mudah_marah'?'var(--neg)':moodColor(sc)}">${initials(a.name||a.phone)}</div>
+      <div style="min-width:0">
+        <div class="nm">${esc(a.name||a.phone||'Tanpa nama')}</div>
+        <div class="nt">${esc(a.behavior_note||behaviorOf(a.behavior_tag).label)}</div>
+      </div>
+      <div class="sc" style="color:${moodColor(sc)}">${sc==null?'–':(sc>0?'+':'')+sc.toFixed(2)}</div>
+    </div>`;}).join('')||'<div class="empty" style="padding:20px"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h4>Semua tenang</h4><p style="font-size:12.5px">Tidak ada pelanggan yang butuh perhatian khusus.</p></div>';
+
+  // funnel
+  const fmap={}; (d.funnel||[]).forEach(f=>fmap[f.status]={n:+f.n,v:+f.nilai});
+  const paidVal=fmap.paid?fmap.paid.v:0;
+  const totalBookings=(d.funnel||[]).reduce((a,f)=>a+(+f.n),0);
+  const fStages=[['pending','Menunggu','var(--neu)'],['confirmed','Dikonfirmasi','var(--brand)'],['paid','Lunas','var(--pos)'],['cancelled','Batal','var(--muted)']];
+  const fMax=Math.max(1,...fStages.map(([k])=>fmap[k]?fmap[k].n:0));
+  const funnelRows=fStages.map(([k,lab,col])=>{const n=fmap[k]?fmap[k].n:0;return `
+    <div class="bar-row"><div class="lab">${lab}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${n/fMax*100}%;background:${col}"></div></div>
+      <div class="cnt num">${n}</div></div>`;}).join('');
+
+  // trend chart (volume bars + mood line)
+  const trend=d.trend||[];
+  const maxVol=Math.max(1,...trend.map(t=>+t.pesan));
+  const W=560,H=150,padL=8,padR=8,padB=20,padT=8;
+  const bw=(W-padL-padR)/Math.max(1,trend.length);
+  const bars=trend.map((t,i)=>{const h=(+t.pesan/maxVol)*(H-padB-padT);const x=padL+i*bw+bw*0.18;return `<rect x="${x.toFixed(1)}" y="${(H-padB-h).toFixed(1)}" width="${(bw*0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="var(--brand-wash)"/>`;}).join('');
+  const moodPts=trend.map((t,i)=>({i,m:t.mood==null?null:+t.mood})).filter(p=>p.m!=null);
+  const mx=i=>padL+i*bw+bw/2;
+  const my=v=>{const tt=(v+1)/2;return padT+(1-tt)*(H-padB-padT);};
+  const moodLine=moodPts.length>1?`<path d="${moodPts.map((p,k)=>(k?'L':'M')+mx(p.i).toFixed(1)+' '+my(p.m).toFixed(1)).join(' ')}" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`+moodPts.map(p=>`<circle cx="${mx(p.i).toFixed(1)}" cy="${my(p.m).toFixed(1)}" r="3" fill="var(--brand)"/>`).join(''):'';
+  const midline=`<line x1="${padL}" y1="${my(0).toFixed(1)}" x2="${W-padR}" y2="${my(0).toFixed(1)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>`;
+  const labels=trend.map((t,i)=>i%2===0?`<text x="${mx(i).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9" fill="var(--muted-2)" font-family="Inter">${t.hari.slice(8)}/${t.hari.slice(5,7)}</text>`:'').join('');
+
+  $('insightBody').innerHTML=`
+    <div class="kpi-grid">
+      <div class="kpi accent-brand"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> Total pelanggan</div><div class="v num">${tot}</div><div class="sub" id="backfillSub">${unk} belum dinilai sentimennya${unk>0?` · <a href="#" onclick="runBackfill(event)" style="color:var(--brand);font-weight:600;text-decoration:none">Nilai sekarang →</a>`:''}</div></div>
+      <div class="kpi ${avg==null?'':avg>=0.1?'accent-pos':avg<=-0.1?'accent-neg':''}"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg> Mood rata-rata</div><div class="v num">${avg==null?'–':(avg>0?'+':'')+avg.toFixed(2)}</div><div class="sub">${moodLabel(avg)} secara keseluruhan</div></div>
+      <div class="kpi accent-neg"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Perlu perhatian</div><div class="v num">${(d.attention||[]).length}</div><div class="sub">sentimen negatif / mudah marah</div></div>
+      <div class="kpi accent-pos"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z"/></svg> Pendapatan lunas</div><div class="v num" style="font-size:23px">${rupiah(paidVal)}</div><div class="sub">${totalBookings} total booking</div></div>
+    </div>
+
+    <div class="ins-grid">
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="10"/></svg> Volume &amp; mood 14 hari</h3>
+        <div class="ph-sub">Batang = jumlah pesan pelanggan · garis = rata-rata mood harian</div>
+        <svg class="trendchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible">${midline}${bars}${moodLine}${labels}</svg>
+        <div class="legend"><span><i style="background:var(--brand-wash)"></i> Volume pesan</span><span><i style="background:var(--brand)"></i> Mood harian</span></div>
+      </div>
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Sebaran sentimen</h3>
+        <div class="ph-sub">Proporsi pelanggan berdasarkan mood rata-rata</div>
+        <div class="bar-row"><div class="lab"><span class="dotmood pos"></span>Positif</div><div class="bar-track"><div class="bar-fill" style="width:${ratio(pos)}%;background:var(--pos)"></div></div><div class="cnt num">${pos}</div></div>
+        <div class="bar-row"><div class="lab"><span class="dotmood neu"></span>Netral</div><div class="bar-track"><div class="bar-fill" style="width:${ratio(neu)}%;background:var(--neu)"></div></div><div class="cnt num">${neu}</div></div>
+        <div class="bar-row"><div class="lab"><span class="dotmood neg"></span>Negatif</div><div class="bar-track"><div class="bar-fill" style="width:${ratio(neg)}%;background:var(--neg)"></div></div><div class="cnt num">${neg}</div></div>
+        <div class="bar-row"><div class="lab"><span class="dotmood none"></span>Belum dinilai</div><div class="bar-track"><div class="bar-fill" style="width:${ratio(unk)}%;background:var(--line-strong)"></div></div><div class="cnt num">${unk}</div></div>
+      </div>
+    </div>
+
+    <div class="ins-grid">
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg> Pelanggan perlu perhatian</h3>
+        <div class="ph-sub">Prioritaskan pelanggan ini — ketuk untuk membuka percakapannya</div>
+        ${attn}
+      </div>
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20M2 12h20"/></svg> Arketipe perilaku</h3>
+        <div class="ph-sub">Bagaimana pelanggan Anda berkomunikasi</div>
+        ${behRows}
+      </div>
+    </div>
+
+    <div class="ins-grid">
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7h18v-7a2 2 0 0 0-2-2h-4"/></svg> Corong booking</h3>
+        <div class="ph-sub">Status seluruh pesanan AKAP &amp; pariwisata</div>
+        ${funnelRows}
+      </div>
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg> Rute terlaris</h3>
+        <div class="ph-sub">Berdasarkan jumlah booking AKAP</div>
+        ${(d.routes||[]).length?`<div class="tbl-wrap" style="box-shadow:none;border:none"><table><tbody>${d.routes.map(r=>`<tr><td><b style="font-family:var(--ff-display)">${esc(r.origin)} → ${esc(r.destination)}</b></td><td style="text-align:right" class="num">${r.bookings} booking</td><td style="text-align:right;color:var(--brand-ink);font-family:var(--ff-display);font-weight:700">${rupiah(r.nilai)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty" style="padding:20px">Belum ada booking AKAP.</div>'}
+      </div>
+    </div>`;
+}
+async function jumpToCustomer(waId){
+  switchView('chats');
+  const list=await api('/conversations');
+  const c=list.find(x=>x.wa_id===waId);
+  if(c) openConv(c); else toast('Percakapan aktif tidak ditemukan untuk pelanggan ini.');
+}
+
+// Nilai (backfill) sentimen pesan lama/historis yang belum dinilai, bertahap.
+async function runBackfill(ev){
+  if(ev) ev.preventDefault();
+  const sub=$('backfillSub');
+  let guard=0;
+  try{
+    while(guard++<200){
+      if(sub) sub.innerHTML='Menilai pesan lama… <span class="num">(memproses)</span>';
+      const r=await api('/insights/backfill-sentiment',{method:'POST',body:JSON.stringify({batchSize:50})});
+      if(sub) sub.innerHTML=`Menilai… sisa <span class="num">${r.remaining}</span> pesan`;
+      if(!r.remaining || r.scored===0) break;
+    }
+    toast('Penilaian sentimen selesai. Memuat ulang…');
+    loadInsights();
+  }catch(e){
+    toast('Gagal menilai: '+(e.message||'error'));
+  }
+}
+
+/* ============================= DASHBOARD ============================= */
+function fmtIdle(sec){ sec=+sec||0; if(sec<60)return sec+' dtk'; const m=Math.floor(sec/60); if(m<60)return m+' mnt'; const h=Math.floor(m/60); return h+' jam '+(m%60)+'m'; }
+async function loadDashboard(){
+  let d; try{ d=await api('/dashboard'); }catch{ $('dashboardBody').innerHTML='<div class="empty">Gagal memuat dasbor.</div>'; return; }
+  const L=d.live||{}, S=d.sales||{}, F=d.followups||{}, cfg=d.config||{};
+
+  // closure breakdown -> map
+  const cmap={}; (d.closures||[]).forEach(c=>cmap[c.alasan]=+c.n);
+  const aiClose=(cmap['resolved_by_ai']||0), agentClose=(cmap['agent']||0), timeoutClose=(cmap['timeout']||0), lain=(cmap['lainnya']||0);
+  const totalClose=aiClose+agentClose+timeoutClose+lain;
+  const cl=(n,lab,col)=>`<div class="bar-row"><div class="lab">${lab}</div><div class="bar-track"><div class="bar-fill" style="width:${totalClose?Math.round(n/totalClose*100):0}%;background:${col}"></div></div><div class="cnt num">${n}</div></div>`;
+
+  // queue rows
+  const queue=(d.queue||[]);
+  const qRows=queue.length?queue.map(q=>{
+    const warm=q.idle_sec>=(cfg.CLOSE_AFTER_MIN||5)*60?'var(--neg)':q.idle_sec>=(cfg.FOLLOWUP_AFTER_MIN||3)*60?'var(--neu)':'var(--pos)';
+    return `<div class="attn" onclick="openConvById(${q.id})">
+      <div class="av" style="background:${warm}22;color:${warm}">${initials(q.name||q.phone)}</div>
+      <div style="min-width:0">
+        <div class="nm">${esc(q.name||q.phone||'Tanpa nama')}</div>
+        <div class="nt">${esc(q.channel||'')} · menunggu ${q.last_sender==='customer'?'dijawab':'balasan customer'}</div>
+      </div>
+      <div class="sc" style="color:${warm}">${fmtIdle(q.idle_sec)}</div>
+    </div>`;}).join(''):'<div class="empty" style="padding:20px"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h4>Antrian kosong</h4><p style="font-size:12.5px">Tidak ada pelanggan yang menunggu agen.</p></div>';
+
+  // 7-day volume chart
+  const vol=d.volume||[];
+  const maxV=Math.max(1,...vol.map(v=>Math.max(+v.masuk,+v.keluar)));
+  const W=560,H=150,padL=8,padR=8,padB=20,padT=8;
+  const gw=(W-padL-padR)/Math.max(1,vol.length);
+  const bars=vol.map((v,i)=>{
+    const hi=(+v.masuk/maxV)*(H-padB-padT), ho=(+v.keluar/maxV)*(H-padB-padT);
+    const x=padL+i*gw; const bw=gw*0.34;
+    return `<rect x="${(x+gw*0.14).toFixed(1)}" y="${(H-padB-hi).toFixed(1)}" width="${bw.toFixed(1)}" height="${hi.toFixed(1)}" rx="2" fill="var(--brand)"/>
+            <rect x="${(x+gw*0.52).toFixed(1)}" y="${(H-padB-ho).toFixed(1)}" width="${bw.toFixed(1)}" height="${ho.toFixed(1)}" rx="2" fill="var(--brand-wash)"/>`;
+  }).join('');
+  const vlabels=vol.map((v,i)=>`<text x="${(padL+i*gw+gw/2).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9" fill="var(--muted-2)" font-family="Inter">${v.hari.slice(8)}/${v.hari.slice(5,7)}</text>`).join('');
+
+  $('dashboardBody').innerHTML=`
+    <div class="kpi-grid">
+      <div class="kpi accent-brand"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Percakapan aktif</div><div class="v num">${L.aktif||0}</div><div class="sub">${L.ditangani_ai||0} sedang ditangani AI</div></div>
+      <div class="kpi ${(L.perlu_agen||0)>0?'accent-neg':''}"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> Perlu agen</div><div class="v num">${L.perlu_agen||0}</div><div class="sub">menunggu diambil alih</div></div>
+      <div class="kpi accent-pos"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Selesai hari ini</div><div class="v num">${L.selesai_hari_ini||0}</div><div class="sub">${aiClose} dituntaskan AI otomatis</div></div>
+      <div class="kpi accent-pos"><div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z"/></svg> Pendapatan lunas (hari ini)</div><div class="v num" style="font-size:21px">${rupiah(S.lunas_nilai)}</div><div class="sub">${S.booking_baru||0} booking baru · pipeline ${rupiah(S.pipeline_nilai)}</div></div>
+    </div>
+
+    <div class="ins-grid">
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Antrian perlu perhatian</h3>
+        <div class="ph-sub">Pelanggan menunggu agen — terlama di atas. Ketuk untuk buka.</div>
+        ${qRows}
+      </div>
+      <div class="panel">
+        <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7h18v-7a2 2 0 0 0-2-2h-4"/></svg> Bagaimana sesi ditutup (hari ini)</h3>
+        <div class="ph-sub">Seberapa banyak yang bisa dituntaskan AI vs perlu eskalasi vs habis waktu</div>
+        ${cl(aiClose,'Dituntaskan AI','var(--pos)')}
+        ${cl(agentClose,'Ditangani agen','var(--brand)')}
+        ${cl(timeoutClose,'Ditutup otomatis (timeout)','var(--neu)')}
+        ${lain?cl(lain,'Lainnya','var(--muted)'):''}
+        <div class="mini-stat" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><span class="k">Follow-up otomatis dikirim</span><span class="v num">${F.total_nudge||0}</span></div>
+        <div class="mini-stat"><span class="k">Percakapan di-follow-up</span><span class="v num">${F.percakapan_dinudge||0}</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="10"/></svg> Volume pesan 7 hari</h3>
+      <div class="ph-sub">Pesan masuk dari pelanggan vs balasan keluar (AI + agen)</div>
+      <svg class="trendchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible">${bars}${vlabels}</svg>
+      <div class="legend"><span><i style="background:var(--brand)"></i> Masuk</span><span><i style="background:var(--brand-wash)"></i> Keluar</span></div>
+    </div>
+
+    <div style="text-align:center;color:var(--muted-2);font-size:11.5px;margin-top:14px">
+      Siklus sesi: AI menyenggol setelah <b>${cfg.FOLLOWUP_AFTER_MIN||3} menit</b> diam, menutup otomatis setelah <b>${cfg.CLOSE_AFTER_MIN||5} menit</b> (maks ${cfg.MAX_FOLLOWUPS||1} follow-up).
+    </div>`;
+}
+async function openConvById(id){
+  switchView('chats');
+  const list=await api('/conversations');
+  const c=list.find(x=>x.id===id);
+  if(c) openConv(c); else toast('Percakapan tidak ditemukan.');
+}
+
+/* ============================= PEMBAYARAN ============================= */
+const PAYBADGE={unpaid:['Belum dibayar','var(--neu)'],pending_verify:['Menunggu verifikasi','var(--brand)'],paid:['Lunas','var(--pos)'],expired:['Kadaluarsa','var(--muted)'],cancelled:['Batal','var(--muted)']};
+async function loadPayments(){
+  let rows; try{ rows=await api('/payments'); }catch{ $('payBody').innerHTML=tdEmpty(6,'Gagal memuat'); return; }
+  if(!rows.length){ $('payBody').innerHTML=tdEmpty(6,'Belum ada tagihan','Tagihan dibuat dari tab Tiket → Booking, atau otomatis oleh AI.'); return; }
+  $('payBody').innerHTML=rows.map(p=>{
+    const b=PAYBADGE[p.status]||['?','var(--muted)'];
+    // Badge hasil baca bukti otomatis (bila ada)
+    let proof='';
+    if(p.proof_match){
+      const pm={match:['Bukti cocok','var(--pos)'],mismatch:['Perlu dicek','var(--neg)'],unclear:['Cek manual','var(--neu)']}[p.proof_match]||['—','var(--muted)'];
+      const readAmt=p.proof_amount!=null?rupiah(p.proof_amount):'?';
+      proof=`<button class="chip" style="background:${pm[1]}22;color:${pm[1]};border:none;cursor:pointer;margin-top:4px" onclick="showProof(${p.id},${JSON.stringify(JSON.stringify({a:p.proof_amount,bank:p.proof_bank,time:p.proof_time,note:p.proof_note,url:p.proof_url,match:p.proof_match,exp:p.amount})).replace(/"/g,'&quot;')})" title="Lihat hasil baca AI">🔍 ${pm[0]} · ${readAmt}</button>`;
+    }
+    return `<tr>
+      <td><b style="font-family:var(--ff-display)">${esc(p.reference)}</b></td>
+      <td>${esc(p.booking_code||'')}</td>
+      <td>${esc(p.customer_name||p.phone||'')}</td>
+      <td class="num">${rupiah(p.amount)}</td>
+      <td><span class="chip" style="background:${b[1]}22;color:${b[1]}">${b[0]}</span>${proof?'<br>'+proof:''}</td>
+      <td style="text-align:right">${p.status==='pending_verify'||p.status==='unpaid'?`<button class="btn btn-sm" onclick="confirmPay(${p.id})">Tandai lunas</button>`:''} ${p.pay_url?`<a class="btn-ghost btn-sm" href="${p.pay_url}" target="_blank">Link</a>`:''}</td>
+    </tr>`;
+  }).join('');
+}
+// Tampilkan detail hasil baca bukti transfer oleh AI + tombol konfirmasi
+function showProof(id, dataStr){
+  let d; try{ d=JSON.parse(dataStr); }catch{ d={}; }
+  const matchLbl={match:'✅ Nominal cocok dengan tagihan',mismatch:'⚠️ Nominal/detail belum cocok — periksa manual',unclear:'❓ Gambar kurang jelas — periksa manual'}[d.match]||'';
+  openModal('Hasil baca bukti transfer', `
+    ${d.url?`<img src="${esc(d.url)}" alt="bukti" style="max-width:100%;border-radius:10px;border:1px solid var(--line);margin-bottom:14px">`:'<div class="empty" style="margin-bottom:14px">Gambar bukti tidak tersedia.</div>'}
+    <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:14px 16px;font-size:13px;line-height:1.9">
+      <div>Nominal tagihan: <b>${rupiah(d.exp)}</b></div>
+      <div>Nominal terbaca: <b>${d.a!=null?rupiah(d.a):'tidak terbaca'}</b></div>
+      ${d.bank?`<div>Bank/pengirim: <b>${esc(d.bank)}</b></div>`:''}
+      ${d.time?`<div>Waktu transaksi: <b>${esc(d.time)}</b></div>`:''}
+      ${d.note?`<div style="color:var(--muted);margin-top:6px">${esc(d.note)}</div>`:''}
+    </div>
+    <div style="margin:14px 0;font-weight:600;font-size:13px;color:${d.match==='match'?'var(--pos)':d.match==='mismatch'?'var(--neg)':'var(--neu)'}">${matchLbl}</div>
+    <button class="btn btn-sm" onclick="confirmPay(${id});closeModal()">Tandai lunas</button>
+    <span style="font-size:12px;color:var(--muted);margin-left:8px">Konfirmasi tetap di tangan Anda.</span>
+  `);
+}
+async function confirmPay(id){
+  if(!confirm('Konfirmasi pembayaran ini sudah lunas?'))return;
+  const r=await api('/payments/'+id+'/confirm',{method:'POST'});
+  if(r.error)return toast(r.error,'err');
+  toast('Pembayaran dikonfirmasi lunas','ok'); loadPayments();
+}
+// dipakai dari tab Booking: buat tagihan utk sebuah booking
+async function createInvoice(bookingId, send){
+  const r=await api('/bookings/'+bookingId+'/payment',{method:'POST',body:JSON.stringify({send:!!send})});
+  if(r.error)return toast(r.error,'err');
+  toast(send?(r.sent?'Tagihan dibuat & dikirim ke customer':'Tagihan dibuat (gagal kirim WA)'):'Tagihan dibuat','ok');
+}
+
+/* ============================= BROADCAST ============================= */
+const BCBADGE={draft:['Draft','var(--muted)'],running:['Berjalan','var(--brand)'],paused:['Dijeda','var(--neu)'],done:['Selesai','var(--pos)'],cancelled:['Dibatalkan','var(--muted)']};
+async function loadBroadcasts(){
+  // isi pilihan nomor
+  const sel=$('bcSession');
+  if(sel && !sel.dataset.filled){ sel.innerHTML=accounts.map(a=>`<option value="${a.session}">${esc(a.label)} ${a.status==='connected'?'🟢':'⚪'}</option>`).join(''); sel.dataset.filled='1'; }
+  let rows; try{ rows=await api('/broadcasts'); }catch{ $('bcList').innerHTML='<div class="empty">Gagal memuat</div>'; return; }
+  if(!rows.length){ $('bcList').innerHTML='<div class="empty" style="padding:20px"><h4>Belum ada broadcast</h4><p style="font-size:12.5px">Buat draft di atas, lalu jalankan.</p></div>'; return; }
+  $('bcList').innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Judul</th><th>Nomor</th><th>Progres</th><th>Status</th><th></th></tr></thead><tbody>'+rows.map(b=>{
+    const bg=BCBADGE[b.status]||['?','var(--muted)'];
+    const pct=b.total?Math.round(b.sent/b.total*100):0;
+    return `<tr>
+      <td><b style="font-family:var(--ff-display)">${esc(b.title||'(tanpa judul)')}</b><div style="font-size:11.5px;color:var(--muted);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(b.body)}</div></td>
+      <td>${esc(b.session)}</td>
+      <td style="min-width:140px"><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--brand)"></div></div><div style="font-size:11px;color:var(--muted);margin-top:3px">${b.sent}/${b.total} terkirim${b.failed?` · ${b.failed} gagal`:''}</div></td>
+      <td><span class="chip" style="background:${bg[1]}22;color:${bg[1]}">${bg[0]}</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        ${b.status==='draft'||b.status==='paused'?`<button class="btn btn-sm" onclick="bcAction(${b.id},'start')">Jalankan</button>`:''}
+        ${b.status==='running'?`<button class="btn-ghost btn-sm" onclick="bcAction(${b.id},'pause')">Jeda</button>`:''}
+        ${b.status!=='done'&&b.status!=='cancelled'?`<button class="icon-btn btn-danger" title="Batalkan" onclick="bcAction(${b.id},'cancel')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:''}
+      </td>
+    </tr>`;
+  }).join('')+'</tbody></table></div>';
+}
+async function createBroadcast(){
+  const session=$('bcSession').value, audience=$('bcAudience').value, title=$('bcTitle').value.trim(), body=$('bcBody').value.trim();
+  if(!session)return toast('Pilih nomor pengirim.','err');
+  if(!body)return toast('Isi pesan dulu.','err');
+  const r=await api('/broadcasts',{method:'POST',body:JSON.stringify({session,audience,title,body})});
+  if(r.error)return toast(r.error,'err');
+  $('bcTitle').value='';$('bcBody').value='';
+  toast(`Draft dibuat untuk ${r.total} penerima`,'ok'); loadBroadcasts();
+}
+async function bcAction(id,action){
+  if(action==='cancel'&&!confirm('Batalkan broadcast ini?'))return;
+  const r=await api('/broadcasts/'+id+'/'+action,{method:'POST'});
+  if(r.error)return toast(r.error,'err');
+  if(action==='start')toast('Broadcast dijalankan — dikirim bertahap','ok');
+  loadBroadcasts();
+}
+
+/* ============================= PENGATURAN ============================= */
+let _settings={};
+async function loadSettings(){
+  try{ _settings=await api('/settings'); }catch{ $('settingsBody').innerHTML='<div class="empty">Gagal memuat</div>'; return; }
+  const bh=_settings.business_hours||{days:{}}; const pi=_settings.payment_info||{};
+  const dayNames=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  const isAdmin=me&&me.role==='admin';
+  const dis=isAdmin?'':'disabled';
+  const dayRows=dayNames.map((nm,i)=>{
+    const d=(bh.days&&(bh.days[i]||bh.days[String(i)]))||{open:'08:00',close:'17:00',closed:true};
+    return `<tr>
+      <td style="font-family:var(--ff-display);font-weight:600">${nm}</td>
+      <td><label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="bh_closed_${i}" ${d.closed?'checked':''} ${dis}> Tutup</label></td>
+      <td><input type="time" id="bh_open_${i}" value="${d.open||'08:00'}" ${dis} style="width:120px"></td>
+      <td><input type="time" id="bh_close_${i}" value="${d.close||'17:00'}" ${dis} style="width:120px"></td>
+    </tr>`;
+  }).join('');
+
+  $('settingsBody').innerHTML=`
+    <div class="ins-grid">
+      <div class="form-card">
+        <h3>🕐 Jam kerja</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin:-4px 0 12px">Di luar jam ini, AI memberi tahu customer bahwa staf akan membalas pada jam kerja (AI tetap bisa bantu info & buat booking).</p>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px"><input type="checkbox" id="bh_enabled" ${bh.enabled!==false?'checked':''} ${dis}> Aktifkan jam kerja</label>
+        <div class="tbl-wrap" style="box-shadow:none;border:1px solid var(--line)"><table><tbody>${dayRows}</tbody></table></div>
+        <div style="margin-top:12px"><label class="fld">Pesan di luar jam kerja</label><textarea id="bh_msg" rows="3" ${dis}>${esc(bh.after_hours_message||'')}</textarea></div>
+        ${isAdmin?`<button class="btn btn-sm" style="margin-top:12px" onclick="saveBusinessHours()">Simpan jam kerja</button>`:'<p style="font-size:12px;color:var(--muted-2);margin-top:10px">Hanya admin yang dapat mengubah.</p>'}
+      </div>
+
+      <div class="form-card">
+        <h3>💳 Info pembayaran</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin:-4px 0 12px">Ditampilkan di halaman pembayaran & dikirim AI saat menagih.</p>
+        <div class="stack">
+          <div><label class="fld">URL gambar QRIS (opsional)</label><input id="pi_qris" value="${esc(pi.qris_image_url||'')}" placeholder="https://..." ${dis}></div>
+          <div class="row">
+            <div><label class="fld">Nama bank</label><input id="pi_bank" value="${esc(pi.bank_name||'')}" ${dis}></div>
+            <div><label class="fld">No. rekening</label><input id="pi_acct" value="${esc(pi.bank_account||'')}" ${dis}></div>
+          </div>
+          <div><label class="fld">Atas nama</label><input id="pi_holder" value="${esc(pi.bank_holder||'')}" ${dis}></div>
+          <div class="row">
+            <div><label class="fld">Catatan</label><input id="pi_note" value="${esc(pi.note||'')}" ${dis}></div>
+            <div><label class="fld">Kedaluwarsa (jam)</label><input id="pi_exp" type="number" value="${pi.expire_hours||24}" ${dis}></div>
+          </div>
+        </div>
+        ${isAdmin?`<button class="btn btn-sm" style="margin-top:12px" onclick="savePaymentInfo()">Simpan info pembayaran</button>`:''}
+      </div>
+    </div>
+
+    <div class="form-card" style="margin-top:16px">
+      <h3>📄 Ekspor laporan</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin:-4px 0 12px">Unduh data sebagai CSV (bisa dibuka di Excel / Google Sheets).</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="downloadReport('kpi')">⬇️ KPI karyawan (CSV)</button>
+        <button class="btn btn-sm" onclick="downloadReport('sales')">⬇️ Penjualan / booking (CSV)</button>
+      </div>
+    </div>`;
+}
+async function saveBusinessHours(){
+  const days={};
+  for(let i=0;i<7;i++){ days[i]={ open:$('bh_open_'+i).value, close:$('bh_close_'+i).value, closed:$('bh_closed_'+i).checked }; }
+  const cfg={ ...(_settings.business_hours||{}), enabled:$('bh_enabled').checked, days, after_hours_message:$('bh_msg').value };
+  const r=await api('/settings/business_hours',{method:'PUT',body:JSON.stringify(cfg)});
+  if(r.error)return toast(r.error,'err'); toast('Jam kerja disimpan','ok');
+}
+async function savePaymentInfo(){
+  const cfg={ qris_image_url:$('pi_qris').value.trim(), bank_name:$('pi_bank').value.trim(), bank_account:$('pi_acct').value.trim(), bank_holder:$('pi_holder').value.trim(), note:$('pi_note').value.trim(), expire_hours:+$('pi_exp').value||24 };
+  const r=await api('/settings/payment_info',{method:'PUT',body:JSON.stringify(cfg)});
+  if(r.error)return toast(r.error,'err'); toast('Info pembayaran disimpan','ok');
+}
+async function downloadReport(kind){
+  // unduh dengan menyertakan token via fetch lalu trigger blob (karena endpoint butuh auth header)
+  try{
+    const res=await fetch('/api/reports/'+kind+'.csv',{headers:{Authorization:'Bearer '+token}});
+    if(!res.ok)throw new Error('gagal');
+    const blob=await res.blob(); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=kind+'.csv'; a.click(); URL.revokeObjectURL(url);
+  }catch{ toast('Gagal mengunduh laporan','err'); }
+}
+
+/* ============================= GLOBAL SEARCH ============================= */
+let searchTimer=null;
+function onSearch(q){
+  clearTimeout(searchTimer);
+  if(!q||q.trim().length<2){ hideSearch(); return; }
+  searchTimer=setTimeout(()=>doSearch(q.trim()),180);
+}
+function hideSearch(){ $('searchPop').classList.add('hidden'); }
+async function doSearch(q){
+  const ql=q.toLowerCase();
+  const [convs,bookings]=await Promise.all([api('/conversations'),api('/bookings').catch(()=>[])]);
+  const cMatch=convs.filter(c=>((c.customer_name||'').toLowerCase().includes(ql)||(c.phone||'').includes(ql))).slice(0,6);
+  const bMatch=(bookings||[]).filter(b=>(b.code||'').toLowerCase().includes(ql)||(b.customer_name||'').toLowerCase().includes(ql)).slice(0,4);
+  let html='';
+  if(cMatch.length) html+=cMatch.map(c=>`<div class="res" onmousedown='openSearchConv(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+    <div class="avatar" style="width:30px;height:30px;font-size:12px;background:${moodColor(c.avg_sentiment==null?null:+c.avg_sentiment)}">${initials(c.customer_name||c.phone)}</div>
+    <div style="min-width:0"><div style="font-family:var(--ff-display);font-weight:600;font-size:13.5px">${esc(c.customer_name||c.phone)}</div><div style="font-size:12px;color:var(--muted)">${esc(c.account_label)} · ${esc(c.phone||'')}</div></div>
+    <span class="chip soft" style="margin-left:auto">Chat</span></div>`).join('');
+  if(bMatch.length) html+=bMatch.map(b=>`<div class="res" onmousedown="openBookingFromSearch()">
+    <div style="width:30px;height:30px;border-radius:8px;background:var(--brand-wash);color:var(--brand-ink);display:flex;align-items:center;justify-content:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7h18v-7a2 2 0 0 0-2-2h-4"/></svg></div>
+    <div><div style="font-family:var(--ff-display);font-weight:600;font-size:13.5px">${esc(b.code)}</div><div style="font-size:12px;color:var(--muted)">${esc(b.customer_name||'')} · ${rupiah(b.amount)}</div></div>
+    <span class="chip soft" style="margin-left:auto">Booking</span></div>`).join('');
+  if(!html) html=`<div style="padding:16px;color:var(--muted);font-size:13px;text-align:center">Tidak ada hasil untuk "${esc(q)}"</div>`;
+  $('searchPop').innerHTML=html; $('searchPop').classList.remove('hidden');
+}
+function openSearchConv(c){ hideSearch(); $('globalSearch').value=''; switchView('chats'); openConv(c); }
+function openBookingFromSearch(){ hideSearch(); $('globalSearch').value=''; switchView('tiket'); tiketTab('booking'); }
+
+/* ============================= KPI ============================= */
+async function loadKpi(){
+  const rows=await api('/kpi');
+  if(!rows.length){ $('kpiBody').innerHTML=tdEmpty(5,'Belum ada data kinerja','Data muncul setelah karyawan menangani percakapan.'); return; }
+  $('kpiBody').innerHTML=rows.map(r=>{
+    const q=r.avg_quality; const qcol=q==null?'var(--muted)':q>=4?'var(--pos)':q>=3?'var(--neu)':'var(--neg)';
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="width:32px;height:32px;font-size:13px">${initials(r.name)}</div><b style="font-family:var(--ff-display)">${esc(r.name)}</b></div></td>
+      <td class="num">${r.handled||0}</td><td class="num">${r.resolved||0}</td>
+      <td class="num">${r.avg_first_reply_sec?r.avg_first_reply_sec+' dtk':'–'}</td>
+      <td>${q==null?'<span style="color:var(--muted)">–</span>':`<span class="chip" style="background:${qcol}22;color:${qcol}">★ ${(+q).toFixed(2)} / 5</span>`}</td>
+    </tr>`;
+  }).join('');
+}
+const tdEmpty=(cols,title,sub)=>`<tr><td colspan="${cols}"><div class="empty"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg></div><h4>${title}</h4><p style="font-size:12.5px">${sub||''}</p></div></td></tr>`;
+
+/* ============================= KNOWLEDGE ============================= */
+async function loadKb(){
+  const rows=await api('/knowledge');
+  if(!rows.length){ $('kbBody').innerHTML=tdEmpty(4,'Belum ada materi','Tambahkan jadwal, harga, atau FAQ agar AI menjawab akurat.'); return; }
+  $('kbBody').innerHTML=rows.map(k=>`<tr><td><span class="chip brand">${esc(k.category)}</span></td><td>${esc(k.question)}</td><td style="color:var(--muted)">${esc(k.answer)}</td><td><button class="icon-btn btn-danger" onclick="delKb(${k.id})" title="Hapus"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td></tr>`).join('');
+}
+async function addKb(){
+  const category=$('kbCat').value,question=$('kbQ').value.trim(),answer=$('kbA').value.trim();
+  if(!question||!answer)return toast('Isi pertanyaan dan jawaban dulu.','err');
+  await api('/knowledge',{method:'POST',body:JSON.stringify({category,question,answer})});
+  $('kbQ').value='';$('kbA').value=''; loadKb(); toast('Materi ditambahkan','ok');
+}
+async function delKb(id){ await api('/knowledge/'+id,{method:'DELETE'}); loadKb(); toast('Materi dihapus'); }
+
+/* ============================= CANNED REPLIES ============================= */
+async function loadCanned(){ await loadQuickReplies(); renderCanned(); }
+function renderCanned(){
+  if(!quickReplies.length){ $('cannedList').innerHTML=`<div class="empty"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div><h4>Belum ada balasan cepat</h4><p style="font-size:12.5px">Simpan kalimat yang sering dipakai untuk mempercepat live chat.</p></div>`; return; }
+  $('cannedList').innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">'+quickReplies.map(q=>`
+    <div class="card" style="padding:15px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <b style="font-family:var(--ff-display);font-size:14px">${esc(q.title)}</b>
+        <button class="icon-btn btn-danger" onclick="delQuick(${q.id})" title="Hapus"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+      </div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.5">${esc(q.body)}</div>
+    </div>`).join('')+'</div>';
+}
+async function addQuick(){
+  const title=$('qrTitle').value.trim(), body=$('qrBody').value.trim();
+  if(!title||!body)return toast('Isi judul dan isi pesan.','err');
+  const r=await api('/quick-replies',{method:'POST',body:JSON.stringify({title,body})});
+  if(r.error)return toast(r.error,'err');
+  $('qrTitle').value='';$('qrBody').value=''; await loadCanned(); toast('Balasan cepat disimpan','ok');
+}
+async function delQuick(id){ await api('/quick-replies/'+id,{method:'DELETE'}); await loadCanned(); toast('Balasan dihapus'); }
+
+/* ============================= WA CONNECTION ============================= */
+async function loadWa(){
+  const box=$('qrGrid'); box.innerHTML='<div class="empty">Memuat status…</div>';
+  const html=[];
+  for(const a of accounts){
+    let q={ready:false,qr:null}; try{ q=await api('/accounts/'+a.session+'/qr'); }catch{}
+    const connected=q.ready||a.status==='connected';
+    const stat=connected?`<span class="stat" style="color:var(--pos)"><span class="led up"></span>Terhubung</span>`:`<span class="stat" style="color:var(--neu)"><span class="led down"></span>Menunggu</span>`;
+    html.push(`<div class="qr-card">
+      <div class="top"><h3>${esc(a.label)}</h3>${stat}</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${esc(a.phone||'Nomor belum terhubung')}</div>
+      <div class="qr-img">${connected?'<div class="connected-state"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div style="margin-top:8px">Siap menerima pesan</div></div>':(q.qr?`<img src="${q.qr}"/>`:'<div class="qr-wait">Menyiapkan kode QR…<br>Tunggu sebentar.</div>')}</div>
+      ${connected?'':'<div style="font-size:12px;color:var(--muted);margin-top:12px;text-align:center">WhatsApp → Perangkat Tertaut → Tautkan Perangkat</div>'}
+    </div>`);
+  }
+  box.innerHTML=html.join('')||'<div class="empty">Belum ada kanal terdaftar.</div>';
+}
+setInterval(()=>{ if(activeView==='wa'&&token)loadWa(); },5000);
+
+/* ============================= AGENTS ============================= */
+async function loadAgents(){
+  const rows=await api('/agents');
+  $('agBody').innerHTML=rows.map(a=>`<tr>
+    <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="width:32px;height:32px;font-size:13px">${initials(a.name)}</div><b style="font-family:var(--ff-display)">${esc(a.name)}</b></div></td>
+    <td style="color:var(--muted)">${esc(a.email)}</td>
+    <td>${a.role==='admin'?'<span class="chip brand">Admin</span>':'<span class="chip soft">Agen</span>'}</td>
+    <td>${a.active?'<span class="chip pos">Aktif</span>':'<span class="chip soft">Nonaktif</span>'}</td>
+  </tr>`).join('');
+}
+async function addAgent(){
+  const name=$('agName').value.trim(),email=$('agEmail').value.trim(),password=$('agPass').value;
+  if(!name||!email||!password)return toast('Lengkapi nama, email, dan kata sandi.','err');
+  const r=await api('/agents',{method:'POST',body:JSON.stringify({name,email,password})});
+  if(r.error)return toast(r.error,'err');
+  $('agName').value='';$('agEmail').value='';$('agPass').value=''; loadAgents(); toast('Karyawan ditambahkan','ok');
+}
+
+/* ============================= TIKET MODULE ============================= */
+let selectedSchedule=null, selectedSeats=new Set(), seatTotal=0, seatTaken=[];
+function tiketTab(t){
+  document.querySelectorAll('#tiketTabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  ['Akap','Wisata','Booking','Master'].forEach(x=>$('tk'+x).classList.toggle('hidden',x.toLowerCase()!==t));
+  if(t==='wisata')loadCharters(); if(t==='booking')loadBookings(); if(t==='master')loadMaster();
+}
+async function searchAkap(){
+  const o=$('akOrigin').value,d=$('akDest').value,dt=$('akDate').value;
+  let q='/schedules?'; if(o)q+='origin='+encodeURIComponent(o)+'&'; if(d)q+='destination='+encodeURIComponent(d)+'&'; if(dt)q+='date='+dt;
+  const rows=await api(q);
+  $('akapResults').innerHTML=rows.length?rows.map(s=>`
+    <div class="res-card">
+      <div class="info">
+        <div class="route">${esc(s.origin)} <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> ${esc(s.destination)}</div>
+        <div class="det"><span>📅 ${s.departure_date} · ${String(s.departure_time).slice(0,5)}</span><span>🚌 ${esc(s.bus_class||'')}</span><span>💺 sisa ${s.seats_available} kursi</span></div>
+      </div>
+      <div style="text-align:right">
+        <div class="price">${rupiah(s.price)}<span style="font-size:11px;color:var(--muted);font-weight:500">/kursi</span></div>
+        <button class="btn-ghost btn-sm" style="margin-top:8px" onclick='openSeatMap(${s.id},"${esc(s.origin)} → ${esc(s.destination)} · ${s.departure_date}",${s.price})'>Pilih kursi</button>
+      </div>
+    </div>`).join(''):'<div class="empty"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div><h4>Tidak ada jadwal</h4><p style="font-size:12.5px">Coba ubah filter, atau tambahkan jadwal di Data Master.</p></div>';
+}
+async function openSeatMap(id,label,price){
+  selectedSchedule={id,price}; selectedSeats.clear();
+  const d=await api('/schedules/'+id+'/seats'); seatTotal=d.total; seatTaken=d.taken;
+  $('seatSchedLabel').textContent=label; $('seatMapWrap').classList.remove('hidden'); renderSeats();
+  $('seatMapWrap').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function renderSeats(){
+  const grid=$('seatMap'); grid.innerHTML='';
+  for(let i=1;i<=seatTotal;i++){
+    const taken=seatTaken.includes(i), sel=selectedSeats.has(i);
+    const b=document.createElement('button'); b.textContent=i;
+    b.className='seat'+(taken?' taken':'')+(sel?' sel':'');
+    if(!taken)b.onclick=()=>{ sel?selectedSeats.delete(i):selectedSeats.add(i); $('seatSel').textContent=selectedSeats.size; renderSeats(); };
+    grid.appendChild(b);
+  }
+  $('seatSel').textContent=selectedSeats.size;
+}
+async function bookAkap(){
+  if(!selectedSchedule||!selectedSeats.size)return toast('Pilih kursi dulu.','err');
+  const phone=$('akCustPhone').value.trim(),name=$('akCustName').value.trim();
+  if(!phone)return toast('Isi nomor HP pelanggan.','err');
+  const cust=await ensureCustomer(phone,name);
+  const r=await api('/bookings/akap',{method:'POST',body:JSON.stringify({scheduleId:selectedSchedule.id,seats:[...selectedSeats],customerId:cust.id})});
+  if(r.error)return toast(r.error,'err');
+  toast('Booking '+r.code+' · '+rupiah(r.amount),'ok');
+  $('seatMapWrap').classList.add('hidden'); searchAkap();
+}
+async function loadCharters(){
+  const rows=await api('/charters');
+  $('charterList').innerHTML=rows.length?rows.map(c=>`
+    <div class="card" style="padding:18px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+        <div><div style="font-family:var(--ff-display);font-weight:700;font-size:16px">${esc(c.name)}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px;display:flex;flex-wrap:wrap;gap:5px 12px"><span>🚌 ${esc(c.bus_class||'')}</span><span>👥 kapasitas ${c.capacity||'-'}</span><span>✓ ${esc(c.includes||'')}</span></div></div>
+        <div class="price">${rupiah(c.price_per_day)}<span style="font-size:11px;color:var(--muted);font-weight:500">/hari</span></div>
+      </div>
+      <div class="row" style="margin-top:14px"><div><label class="fld">No. HP pelanggan</label><input id="cust_${c.id}_phone" placeholder="628…"/></div><div><label class="fld">Nama</label><input id="cust_${c.id}_name" placeholder="Nama"/></div></div>
+      <div class="row" style="margin-top:10px"><div><label class="fld">Tanggal mulai</label><input id="ch_${c.id}_start" type="date"/></div><div><label class="fld">Lama (hari)</label><input id="ch_${c.id}_days" type="number" value="1"/></div><div><label class="fld">Tujuan / acara</label><input id="ch_${c.id}_dest" placeholder="mis. Bromo"/></div></div>
+      <button class="btn btn-sm btn-ok" style="margin-top:14px" onclick="bookCharter(${c.id})">Buat booking carter</button>
+    </div>`).join(''):'<div class="empty"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3"/></svg></div><h4>Belum ada paket</h4><p style="font-size:12.5px">Tambahkan paket pariwisata di Data Master.</p></div>';
+}
+async function bookCharter(id){
+  const phone=$('cust_'+id+'_phone').value.trim(),name=$('cust_'+id+'_name').value.trim();
+  if(!phone)return toast('Isi nomor HP pelanggan.','err');
+  const cust=await ensureCustomer(phone,name);
+  const body={charterId:id,customerId:cust.id,startDate:$('ch_'+id+'_start').value||null,days:+$('ch_'+id+'_days').value||1,destination:$('ch_'+id+'_dest').value};
+  const r=await api('/bookings/pariwisata',{method:'POST',body:JSON.stringify(body)});
+  if(r.error)return toast(r.error,'err');
+  toast('Carter '+r.code+' · '+rupiah(r.amount),'ok');
+}
+async function ensureCustomer(phone,name){
+  const waId=phone.replace(/\D/g,'')+'@c.us';
+  const list=await api('/conversations');
+  const found=list.find(c=>c.wa_id===waId||c.phone===phone.replace(/\D/g,''));
+  if(found)return {id:found.customer_id};
+  return await api('/customers',{method:'POST',body:JSON.stringify({phone:phone.replace(/\D/g,''),name})});
+}
+async function loadBookings(){
+  const rows=await api('/bookings');
+  if(!rows.length){ $('bookingBody').innerHTML=tdEmpty(7,'Belum ada booking','Pesanan AKAP & pariwisata akan tampil di sini.'); return; }
+  const stColor={pending:'neu',confirmed:'brand',paid:'pos',cancelled:'soft'};
+  $('bookingBody').innerHTML=rows.map(b=>{
+    const detail=b.service_type==='akap'?`${esc(b.origin||'')}→${esc(b.route_dest||'')} · ${b.departure_date||''} · kursi ${(b.seat_numbers||[]).join(',')}`:`${esc(b.charter_name||'')} · ${esc(b.destination||'')} · ${b.days||''} hari`;
+    const canBill=b.status!=='cancelled'&&b.status!=='paid';
+    return `<tr>
+      <td><b style="font-family:var(--ff-display)">${esc(b.code)}</b></td>
+      <td><span class="chip ${b.service_type==='akap'?'brand':'soft'}">${b.service_type==='akap'?'AKAP':'Pariwisata'}</span></td>
+      <td>${esc(b.customer_name||b.phone||'')}</td>
+      <td style="color:var(--muted);font-size:12.5px">${detail}</td>
+      <td style="font-family:var(--ff-display);font-weight:700">${rupiah(b.amount)}</td>
+      <td><select onchange="setBookingStatus(${b.id},this.value)" style="padding:6px 26px 6px 10px;font-size:12.5px;width:auto">
+        ${['pending','confirmed','paid','cancelled'].map(s=>`<option ${b.status===s?'selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td style="white-space:nowrap">${b.status==='paid'?'<span class="chip" style="background:var(--pos)22;color:var(--pos)">Lunas</span>':canBill?`<button class="btn btn-sm" onclick="createInvoice(${b.id},true)" title="Buat tagihan & kirim ke customer">Tagih + kirim</button>`:'–'} ${b.status!=='cancelled'?`<button class="btn-ghost btn-sm" onclick="manageBooking(${b.id})" title="Reschedule / batalkan">Kelola</button>`:''}</td>
+    </tr>`;
+  }).join('');
+}
+async function setBookingStatus(id,status){ await api('/bookings/'+id+'/status',{method:'POST',body:JSON.stringify({status})}); toast('Status diperbarui','ok'); }
+async function loadMaster(){
+  const routes=await api('/routes'),buses=await api('/buses');
+  $('msRoute').innerHTML=routes.map(r=>`<option value="${r.id}">${esc(r.origin)}→${esc(r.destination)}</option>`).join('');
+  $('msBus').innerHTML=buses.map(b=>`<option value="${b.id}">${esc(b.code)} (${b.total_seats} kursi)</option>`).join('');
+}
+async function addRoute(){
+  if(!$('mrOrigin').value||!$('mrDest').value||!$('mrPrice').value)return toast('Lengkapi asal, tujuan, dan harga.','err');
+  await api('/routes',{method:'POST',body:JSON.stringify({origin:mrOrigin.value,destination:mrDest.value,distance_km:+mrKm.value||null,base_price:+mrPrice.value})});
+  toast('Rute ditambahkan','ok'); loadMaster(); ['mrOrigin','mrDest','mrKm','mrPrice'].forEach(i=>$(i).value='');
+}
+async function addBus(){
+  if(!$('mbCode').value)return toast('Isi kode bus.','err');
+  const r=await api('/buses',{method:'POST',body:JSON.stringify({code:mbCode.value,name:mbName.value,bus_class:mbClass.value,total_seats:+mbSeats.value})});
+  if(r.error)return toast(r.error,'err'); toast('Bus ditambahkan','ok'); loadMaster();
+}
+async function addSchedule(){
+  if(!$('msDate').value||!$('msTime').value||!$('msPrice').value)return toast('Lengkapi tanggal, jam, dan harga.','err');
+  const r=await api('/schedules',{method:'POST',body:JSON.stringify({route_id:+msRoute.value,bus_id:+msBus.value,departure_date:msDate.value,departure_time:msTime.value,price:+msPrice.value})});
+  if(r.error)return toast(r.error,'err'); toast('Jadwal ditambahkan','ok');
+}
+async function addCharter(){
+  if(!$('mcName').value||!$('mcPrice').value)return toast('Isi nama paket dan harga.','err');
+  await api('/charters',{method:'POST',body:JSON.stringify({name:mcName.value,bus_class:mcClass.value,price_per_day:+mcPrice.value,capacity:+mcCap.value||null,includes:mcInc.value})});
+  toast('Paket ditambahkan','ok'); ['mcName','mcClass','mcPrice','mcCap','mcInc'].forEach(i=>$(i).value='');
+}
+
+/* ============================= MODAL (reusable) ============================= */
+function openModal(title, bodyHtml){
+  let ov=$('appModal');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='appModal';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+    ov.onclick=e=>{ if(e.target===ov) closeModal(); };
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML=`<div style="background:var(--surface);border-radius:16px;max-width:520px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)">
+      <h3 style="margin:0;font-size:16px">${esc(title)}</h3>
+      <button onclick="closeModal()" class="btn-ghost btn-sm" style="padding:4px 9px">✕</button>
+    </div>
+    <div style="padding:22px">${bodyHtml}</div>
+  </div>`;
+  ov.style.display='flex';
+}
+function closeModal(){ const ov=$('appModal'); if(ov) ov.style.display='none'; }
+
+/* ============================= KELOLA BOOKING (reschedule/cancel) ============================= */
+async function manageBooking(id){
+  openModal('Kelola Booking', '<div class="empty">Memuat…</div>');
+  let d; try{ d=await api('/bookings/'+id+'/detail'); }catch{ return openModal('Kelola Booking','<div class="empty">Gagal memuat.</div>'); }
+  const b=d.booking;
+  const isAkap=b.service_type==='akap';
+  const cancelled=b.status==='cancelled';
+  const detail=isAkap
+    ? `${esc(b.origin||'')} → ${esc(b.destination||'')} · ${b.departure_date||''} ${String(b.departure_time||'').slice(0,5)} · kursi ${(b.seat_numbers||[]).join(', ')}`
+    : `${esc(b.charter_name||'')} · ${esc(b.destination||'')} · ${b.days||''} hari`;
+  const changeRows=(d.changes||[]).map(c=>{
+    const when=new Date(c.created_at).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+    const lbl=c.change_type==='reschedule'?'Reschedule':'Pembatalan';
+    const extra=c.change_type==='cancel'&&+c.refund_amount>0?` · refund ${rupiah(c.refund_amount)}`:(+c.fee_amount>0?` · biaya ${rupiah(c.fee_amount)}`:'');
+    return `<div style="font-size:12px;color:var(--muted);padding:5px 0;border-top:1px solid var(--line)">${when} · <b>${lbl}</b>${extra}${c.agent_name?` · ${esc(c.agent_name)}`:''}</div>`;
+  }).join('');
+
+  openModal('Kelola Booking '+esc(b.code), `
+    <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:13px 15px;margin-bottom:16px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:4px">${isAkap?'AKAP':'Pariwisata'} · ${esc(b.customer_name||b.phone||'')}</div>
+      <div style="font-weight:600;font-size:13.5px">${detail}</div>
+      <div style="margin-top:6px;font-family:var(--ff-display);font-weight:700">${rupiah(b.amount)} · <span class="chip ${cancelled?'soft':'brand'}">${esc(b.status)}</span></div>
+    </div>
+    ${cancelled?'<div class="empty" style="padding:14px">Booking ini sudah dibatalkan.</div>':`
+      ${isAkap?`
+      <div style="margin-bottom:18px">
+        <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:7px">↪ Pindah jadwal (reschedule)</label>
+        <select id="rsSched" style="width:100%;margin-bottom:9px"><option value="">Memuat jadwal…</option></select>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin-bottom:9px"><input type="checkbox" id="rsNotify" checked style="width:auto"> Beri tahu customer via WhatsApp</label>
+        <button class="btn btn-sm" onclick="doReschedule(${b.id})">Konfirmasi reschedule</button>
+      </div>`:''}
+      <div style="border-top:1px solid var(--line);padding-top:16px">
+        <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:7px;color:var(--neg)">⊘ Batalkan booking</label>
+        <div id="refundInfo" style="font-size:12.5px;color:var(--muted);margin-bottom:9px">Menghitung estimasi refund…</div>
+        <input id="cxReason" placeholder="Alasan pembatalan (opsional)" style="width:100%;margin-bottom:9px">
+        <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin-bottom:9px"><input type="checkbox" id="cxNotify" checked style="width:auto"> Beri tahu customer via WhatsApp</label>
+        <button class="btn-danger btn-sm" onclick="doCancel(${b.id})" style="padding:9px 15px;border-radius:9px;cursor:pointer">Batalkan booking</button>
+      </div>
+    `}
+    ${changeRows?`<div style="margin-top:18px"><div style="font-size:11.5px;font-weight:600;color:var(--muted-2);text-transform:uppercase;letter-spacing:.04em">Riwayat perubahan</div>${changeRows}</div>`:''}
+  `);
+
+  if(!cancelled){
+    if(isAkap){
+      // isi pilihan jadwal (rute sama diutamakan, tampilkan semua jadwal terbuka)
+      api('/schedules').then(scheds=>{
+        const sel=$('rsSched'); if(!sel)return;
+        const opts=(scheds||[]).filter(s=>s.id!==b.schedule_id).map(s=>
+          `<option value="${s.id}">${esc(s.origin)}→${esc(s.destination)} · ${s.departure_date} ${String(s.departure_time).slice(0,5)} · ${rupiah(s.price)} · sisa ${s.seats_available}</option>`
+        ).join('');
+        sel.innerHTML=opts||'<option value="">Tidak ada jadwal lain</option>';
+      }).catch(()=>{});
+    }
+    // estimasi refund
+    api('/bookings/'+b.id+'/refund-quote').then(q=>{
+      const el=$('refundInfo'); if(!el)return;
+      if(q.manual){ el.innerHTML='Pembatalan pariwisata diproses manual sesuai kontrak.'; return; }
+      el.innerHTML=`Estimasi refund: <b style="color:var(--ink)">${rupiah(q.refundAmount)}</b> (${q.refundPct}% · ${esc(q.tier||'')}${q.daysBefore!=null?` · H-${q.daysBefore}`:''})`;
+    }).catch(()=>{ const el=$('refundInfo'); if(el)el.textContent=''; });
+  }
+}
+async function doReschedule(id){
+  const sched=$('rsSched').value;
+  if(!sched)return toast('Pilih jadwal baru dulu.','err');
+  const notify=$('rsNotify').checked;
+  const r=await api('/bookings/'+id+'/reschedule',{method:'POST',body:JSON.stringify({newScheduleId:+sched,notify})});
+  if(r.error)return toast(r.error,'err');
+  toast('Reschedule berhasil. Kursi baru: '+(r.newSeats||[]).join(', '),'ok');
+  closeModal(); loadBookings();
+}
+async function doCancel(id){
+  if(!confirm('Yakin batalkan booking ini? Kursi akan dilepas & tagihan dibatalkan.'))return;
+  const notify=$('cxNotify').checked;
+  const reason=$('cxReason').value;
+  const r=await api('/bookings/'+id+'/cancel',{method:'POST',body:JSON.stringify({notify,reason})});
+  if(r.error)return toast(r.error,'err');
+  toast(r.refundAmount>0?('Dibatalkan. Refund: '+rupiah(r.refundAmount)):'Booking dibatalkan.','ok');
+  closeModal(); loadBookings();
+}
+</script>
+</body>
+</html>
