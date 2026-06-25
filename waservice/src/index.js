@@ -12,7 +12,11 @@ const PORT = process.env.PORT || 3001;
 const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:3000';
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'webhook-secret';
 const SYNC_HISTORY = (process.env.SYNC_HISTORY || 'true') === 'true';
-const SYNC_LIMIT = parseInt(process.env.SYNC_LIMIT || '30', 10); // pesan per chat saat sync awal
+// Target total pesan per chat saat sync awal. WA Web TIDAK menyimpan seluruh histori
+// seumur hidup — ini batas atas "ambil sebanyak mungkin yang masih tersedia".
+const SYNC_LIMIT = parseInt(process.env.SYNC_LIMIT || '1000', 10);
+// Ukuran halaman tiap kali memuat lebih banyak pesan lama (loadEarlierMessages).
+const SYNC_PAGE = parseInt(process.env.SYNC_PAGE || '100', 10);
 const MAX_MEDIA_MB = parseInt(process.env.MAX_MEDIA_MB || '16', 10);
 
 // Folder media bersama (di-mount juga oleh backend untuk disajikan)
@@ -126,6 +130,7 @@ client.on('message', async (msg) => {
     name: contactName,
     body: msg.body || '',
     waMessageId: msg.id?._serialized,
+    waTimestamp: msg.timestamp || null,   // epoch detik dari WhatsApp
     mediaType: msg.hasMedia ? (mediaInfo.mediaType || msg.type || 'media') : null,
     mediaUrl: mediaInfo.mediaUrl || null,
     mediaName: mediaInfo.mediaName || null,
@@ -133,14 +138,34 @@ client.on('message', async (msg) => {
 });
 
 // ---- Sinkronisasi pesan lama (yang masih ada di sesi WhatsApp Web) ----
+// Strategi pagination: whatsapp-web.js mengembalikan N pesan TERBARU lewat
+// fetchMessages({limit}). Untuk menggali lebih dalam, kita naikkan limit
+// bertahap (page demi page) sampai (a) mencapai SYNC_LIMIT, atau (b) jumlah
+// pesan tak bertambah lagi (artinya cache WA Web sudah habis untuk chat itu).
+async function fetchAllMessages(chat) {
+  let limit = Math.min(SYNC_PAGE, SYNC_LIMIT);
+  let last = [];
+  while (true) {
+    let msgs = [];
+    try { msgs = await chat.fetchMessages({ limit }); } catch { break; }
+    // Tidak ada tambahan pesan dibanding putaran sebelumnya -> sudah mentok.
+    if (msgs.length <= last.length) { last = msgs; break; }
+    last = msgs;
+    if (msgs.length >= SYNC_LIMIT) break;     // sudah cukup
+    if (limit >= SYNC_LIMIT) break;           // batas atas
+    limit = Math.min(limit + SYNC_PAGE, SYNC_LIMIT);
+  }
+  // fetchMessages mengembalikan urutan lama->baru; pastikan urut by timestamp.
+  return last.slice(-SYNC_LIMIT).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+}
+
 async function syncOldMessages() {
-  console.log(`[wa:${SESSION}] mulai sinkronisasi riwayat (limit ${SYNC_LIMIT}/chat)...`);
+  console.log(`[wa:${SESSION}] mulai sinkronisasi riwayat (target ${SYNC_LIMIT}/chat, page ${SYNC_PAGE})...`);
   const chats = await client.getChats();
   let count = 0;
   for (const chat of chats) {
     if (chat.isGroup) continue;
-    let msgs = [];
-    try { msgs = await chat.fetchMessages({ limit: SYNC_LIMIT }); } catch { continue; }
+    const msgs = await fetchAllMessages(chat);
     for (const m of msgs) {
       // hanya pesan masuk dari customer yang kita simpan via webhook incoming.
       // pesan keluar lama (fromMe) dikirim sebagai histori juga agar transkrip utuh.
@@ -151,6 +176,7 @@ async function syncOldMessages() {
         name: chat.name || null,
         body: m.body || '',
         waMessageId: m.id?._serialized,
+        waTimestamp: m.timestamp || null,   // epoch detik dari WhatsApp
         mediaType: m.hasMedia ? (mediaInfo.mediaType || m.type || 'media') : null,
         mediaUrl: mediaInfo.mediaUrl || null,
         mediaName: mediaInfo.mediaName || null,
@@ -159,6 +185,7 @@ async function syncOldMessages() {
       });
       count++;
     }
+    console.log(`[wa:${SESSION}] chat ${chat.name || chat.id?.user}: ${msgs.length} pesan.`);
   }
   console.log(`[wa:${SESSION}] sinkronisasi selesai: ${count} pesan dikirim ke backend.`);
 }

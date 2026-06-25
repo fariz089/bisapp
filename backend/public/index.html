@@ -780,6 +780,33 @@ const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&g
 const rupiah=n=>'Rp'+Number(n||0).toLocaleString('id-ID');
 const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
 
+// Nomor rapi dari wa_id/phone (mis. '628123...@c.us' -> '+628123...').
+function prettyPhone(c){
+  let p=(c&&(c.phone||c.wa_id))||'';
+  p=String(p).split('@')[0].replace(/\D/g,'');
+  return p?('+'+p):'';
+}
+// Nama tampilan: NOMOR + nama (bila ada nama yang masuk akal).
+// Pushname WhatsApp bisa berisi sampah (mis. biner '01001000', simbol, atau
+// sekadar berupa angka). Nama seperti itu DIABAIKAN — cukup tampilkan nomor.
+function looksLikeRealName(n){
+  if(!n) return false;
+  const s=String(n).trim();
+  if(s.length<2) return false;
+  if(/^[01\s]+$/.test(s)) return false;            // biner
+  if(/^[\d\s+()-]+$/.test(s)) return false;        // hanya angka/simbol telepon
+  const letters=(s.match(/[A-Za-zÀ-ÿ\u00C0-\u024F]/g)||[]).length;
+  return letters>=2;                                // minimal ada huruf
+}
+function displayName(c){
+  const phone=prettyPhone(c);
+  const name=c&&c.customer_name;
+  if(looksLikeRealName(name)){
+    return phone?`${name} (${phone})`:name;
+  }
+  return phone||'Tanpa nama';
+}
+
 function toast(msg,kind=''){
   const el=document.createElement('div'); el.className='toast '+kind;
   const ic=kind==='ok'?'M20 6 9 17l-5-5':kind==='err'?'M18 6 6 18M6 6l12 12':'M12 8v4m0 4h.01';
@@ -901,7 +928,7 @@ async function loadConversations(){
     const s=c.avg_sentiment==null?null:Number(c.avg_sentiment);
     const beh=c.behavior_tag&&c.behavior_tag!=='netral'?`<span class="chip soft" style="color:${behaviorOf(c.behavior_tag).color}">${behaviorOf(c.behavior_tag).label}</span>`:'';
     return `<div class="conv ${currentConv&&currentConv.id===c.id?'active':''}" onclick='openConv(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-      <div class="l1"><span class="nm">${esc(c.customer_name||c.phone||'Tanpa nama')}</span>${tag}</div>
+      <div class="l1"><span class="nm">${esc(displayName(c))}</span>${tag}</div>
       <div class="l2"><span class="chan">${esc(c.account_label)}</span></div>
       <div class="l3"><span class="dotmood ${moodClass(s)}" title="${moodLabel(s)}"></span>${beh||`<span style="font-size:11.5px;color:var(--muted-2)">${moodLabel(s)}</span>`}</div>
     </div>`;
@@ -916,10 +943,10 @@ async function openConv(c){
   const beh=c.behavior_tag&&c.behavior_tag!=='netral'?`<span class="chip soft" style="color:${behaviorOf(c.behavior_tag).color}">${behaviorOf(c.behavior_tag).label}</span>`:'';
   $('chatTop').innerHTML=`
     <div class="who">
-      <div class="avatar" style="background:${moodColor(c.avg_sentiment==null?null:+c.avg_sentiment)}">${initials(c.customer_name||c.phone)}</div>
+      <div class="avatar" style="background:${moodColor(c.avg_sentiment==null?null:+c.avg_sentiment)}">${initials(looksLikeRealName(c.customer_name)?c.customer_name:prettyPhone(c))}</div>
       <div>
-        <div class="nm">${esc(c.customer_name||c.phone||'Tanpa nama')}</div>
-        <div class="meta">${esc(c.account_label)} · ${esc(c.phone||'')} ${beh}</div>
+        <div class="nm">${esc(displayName(c))}</div>
+        <div class="meta">${esc(c.account_label)} · ${esc(prettyPhone(c))} ${beh}</div>
       </div>
     </div>
     <div class="actions">
@@ -933,12 +960,15 @@ async function openConv(c){
   renderMessages(msgs);
   refreshCtxPanel();
 }
+// Waktu pesan: utamakan wa_timestamp (waktu ASLI dari WhatsApp) bila ada,
+// jatuh ke created_at (waktu insert DB) untuk pesan yang dibuat sistem.
+function msgTime(m){ return new Date(m.wa_timestamp || m.created_at); }
 function renderMessages(msgs){
   const box=$('msgs'); box.innerHTML='';
   if(!msgs.length){ box.innerHTML='<div class="center-state"><p>Belum ada pesan dalam percakapan ini.</p></div>'; return; }
   let lastDay='';
   msgs.forEach(m=>{
-    const day=new Date(m.created_at).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long'});
+    const day=msgTime(m).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long'});
     if(day!==lastDay){ lastDay=day; const d=document.createElement('div'); d.className='daysep'; d.textContent=day; box.appendChild(d); }
     box.appendChild(msgEl(m));
   });
@@ -955,16 +985,26 @@ function mediaHtml(m){
 function msgEl(m){
   const out=m.direction!=='in';
   const row=document.createElement('div'); row.className='row-msg '+(out?'out':'in');
+  row.dataset.ts=msgTime(m).getTime();
   const kind=m.sender_type==='ai'?'ai':(m.sender_type==='agent'?'agent':'');
   const who=m.sender_type==='ai'?'AI':(m.sender_type==='agent'?(m.agent_name||'Agen'):'');
-  const time=new Date(m.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+  const time=msgTime(m).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
   const bub=document.createElement('div'); bub.className='bub '+(out?('out '+kind):'in');
   bub.innerHTML=`${mediaHtml(m)}${esc(m.body)}<div class="meta">${who?esc(who)+' · ':''}${time}</div>`;
   row.appendChild(bub); return row;
 }
 function appendMessage(m){
   const box=$('msgs'); if(box.querySelector('.center-state'))box.innerHTML='';
-  box.appendChild(msgEl(m)); box.scrollTop=box.scrollHeight;
+  const el=msgEl(m);
+  const t=msgTime(m).getTime();
+  // Sisipkan pada posisi kronologis yang benar. Penting saat sinkronisasi riwayat:
+  // webhook bisa tiba acak, jadi jangan asal append ke bawah.
+  const rows=[...box.querySelectorAll('.row-msg')];
+  let inserted=false;
+  for(const r of rows){
+    if(Number(r.dataset.ts||0)>t){ box.insertBefore(el,r); inserted=true; break; }
+  }
+  if(!inserted){ box.appendChild(el); box.scrollTop=box.scrollHeight; }
 }
 async function sendMsg(){
   const t=$('msgInput').value.trim(); if(!t||!currentConv)return;

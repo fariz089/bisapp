@@ -133,7 +133,9 @@ async function getAccountBySession(session) {
 
 async function getHistory(conversationId, limit = 20) {
   const { rows } = await query(
-    'SELECT sender_type, body FROM messages WHERE conversation_id=$1 ORDER BY id DESC LIMIT $2',
+    `SELECT sender_type, body FROM messages
+      WHERE conversation_id=$1
+      ORDER BY COALESCE(wa_timestamp, created_at) DESC, id DESC LIMIT $2`,
     [conversationId, limit]
   );
   return rows.reverse();
@@ -146,14 +148,20 @@ async function getKnowledge() {
 
 // Simpan pesan
 async function saveMessage(m) {
+  // wa_timestamp: untuk pesan WhatsApp gunakan epoch detik aslinya; untuk pesan
+  // keluar yang kita buat sendiri (AI/agent), pakai waktu sekarang. Ini yang
+  // dipakai untuk MENGURUTKAN transkrip agar sesuai kejadian nyata.
+  const waTs = m.wa_timestamp != null
+    ? new Date(Number(m.wa_timestamp) * 1000).toISOString()
+    : null;
   const { rows } = await query(
     `INSERT INTO messages
-       (conversation_id, account_id, wa_message_id, direction, sender_type, agent_id, body, media_type, media_url, sentiment)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       (conversation_id, account_id, wa_message_id, direction, sender_type, agent_id, body, media_type, media_url, sentiment, wa_timestamp)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11, now()))
      ON CONFLICT (account_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING
      RETURNING *`,
     [m.conversation_id, m.account_id, m.wa_message_id || null, m.direction, m.sender_type,
-     m.agent_id || null, m.body || null, m.media_type || null, m.media_url || null, m.sentiment ?? null]
+     m.agent_id || null, m.body || null, m.media_type || null, m.media_url || null, m.sentiment ?? null, waTs]
   );
   return rows[0];
 }
@@ -161,7 +169,7 @@ async function saveMessage(m) {
 // ============ Handler utama pesan MASUK dari WA service ============
 // io: socket.io untuk push realtime ke dashboard
 // sendFn: async (session, waId, text) => kirim balasan via WA service
-export async function handleIncoming({ session, waId, name, body, waMessageId, mediaType, mediaUrl, mediaName, historical, fromMe }, io, sendFn) {
+export async function handleIncoming({ session, waId, name, body, waMessageId, waTimestamp, mediaType, mediaUrl, mediaName, historical, fromMe }, io, sendFn) {
   const account = await getAccountBySession(session);
   if (!account) return;
 
@@ -173,7 +181,7 @@ export async function handleIncoming({ session, waId, name, body, waMessageId, m
     await saveMessage({
       conversation_id: convo.id, account_id: account.id, wa_message_id: waMessageId,
       direction: 'out', sender_type: 'agent', body,
-      media_type: mediaType, media_url: mediaUrl,
+      media_type: mediaType, media_url: mediaUrl, wa_timestamp: waTimestamp,
     });
     return;
   }
@@ -188,6 +196,7 @@ export async function handleIncoming({ session, waId, name, body, waMessageId, m
   const inMsg = await saveMessage({
     conversation_id: convo.id, account_id: account.id, wa_message_id: waMessageId,
     direction: 'in', sender_type: 'customer', body, media_type: mediaType, media_url: mediaUrl, sentiment,
+    wa_timestamp: waTimestamp,
   });
 
   // Pesan historis masuk: cukup simpan, jangan picu balasan AI
@@ -386,11 +395,19 @@ export async function handleIncoming({ session, waId, name, body, waMessageId, m
     await escalate(convo, account, io, 'ai_error');
   }
 
-  // Update profil perilaku customer setiap kelipatan beberapa pesan
-  if (customer.total_chats % 5 === 0) {
-    const history = await getHistory(convo.id, 30);
-    const prof = await summarizeCustomer(history).catch(() => null);
-    if (prof) {
+  // Update profil perilaku customer secara berkala.
+  // PENTING: `customer.total_chats` di-load SEBELUM increment di atas, jadi sudah
+  // basi. Ambil nilai terbaru agar gate-nya akurat. Jalankan saat pesan pertama
+  // (agar arketipe cepat terisi, tidak stuck 'netral') lalu tiap kelipatan 5.
+  const freshChats = (await query(
+    'SELECT total_chats FROM customers WHERE id=$1', [customer.id]
+  )).rows[0]?.total_chats || 0;
+  if (freshChats === 1 || freshChats % 5 === 0) {
+    const histProfile = await getHistory(convo.id, 30);
+    const prof = await summarizeCustomer(histProfile).catch(() => null);
+    // Hanya tulis bila LLM benar-benar memberi tag (summarizeCustomer kini
+    // mengembalikan null saat gagal / rate limit, agar tidak menimpa data bagus).
+    if (prof && prof.behavior_tag) {
       await query('UPDATE customers SET behavior_tag=$1, behavior_note=$2 WHERE id=$3',
         [prof.behavior_tag, prof.note, customer.id]);
     }

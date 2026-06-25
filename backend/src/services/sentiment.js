@@ -38,8 +38,10 @@ async function scoreMessage(msg) {
     return false;
   }
   const s = await analyzeSentiment(msg.body).catch(() => null);
-  const score = s?.score ?? 0;
-  await query('UPDATE messages SET sentiment = $1 WHERE id = $2', [score, msg.id]);
+  // Gagal menilai (mis. 429): JANGAN tulis 0. Biarkan sentiment tetap NULL agar
+  // dicoba lagi di putaran berikutnya — mencegah seluruh data terkunci 'netral'.
+  if (!s || s.score == null) return false;
+  await query('UPDATE messages SET sentiment = $1 WHERE id = $2', [s.score, msg.id]);
   return true;
 }
 
@@ -52,7 +54,7 @@ export async function backfillForConversation(conversationId, { max = 200, force
     `SELECT m.id, m.body, c.customer_id
        FROM messages m JOIN conversations c ON c.id = m.conversation_id
       WHERE m.conversation_id = $1 AND m.sender_type = 'customer' ${cond}
-      ORDER BY m.id ASC LIMIT $2`,
+      ORDER BY COALESCE(m.wa_timestamp, m.created_at) ASC, m.id ASC LIMIT $2`,
     [conversationId, max]
   );
   let scored = 0;
@@ -73,7 +75,7 @@ export async function backfillSentimentBatch({ batchSize = 25 } = {}) {
     `SELECT m.id, m.body, c.customer_id
        FROM messages m JOIN conversations c ON c.id = m.conversation_id
       WHERE m.sender_type = 'customer' AND m.sentiment IS NULL
-      ORDER BY m.id ASC LIMIT $1`,
+      ORDER BY COALESCE(m.wa_timestamp, m.created_at) ASC, m.id ASC LIMIT $1`,
     [batchSize]
   );
   if (!rows.length) return { scored: 0, remaining: 0 };

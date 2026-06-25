@@ -50,6 +50,8 @@ services:
       BROADCAST_MAX_PER_RUN: ${BROADCAST_MAX_PER_RUN:-500}
       # Eskalasi pintar
       AGENT_ONLINE_GRACE_SEC: ${AGENT_ONLINE_GRACE_SEC:-90}
+      # Penilaian sentimen: jumlah pesan per siklus backfill (turunkan bila kena 429)
+      SENTIMENT_BATCH: ${SENTIMENT_BATCH:-15}
     ports:
       - "${BACKEND_PORT:-4000}:3000"
     volumes:
@@ -67,7 +69,8 @@ services:
       BACKEND_URL: http://backend:3000
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       SYNC_HISTORY: ${SYNC_HISTORY:-true}
-      SYNC_LIMIT: ${SYNC_LIMIT:-30}
+      SYNC_LIMIT: ${SYNC_LIMIT:-1000}
+      SYNC_PAGE: ${SYNC_PAGE:-100}
       MEDIA_DIR: /app/media
       MAX_MEDIA_MB: ${MAX_MEDIA_MB:-16}
     volumes:
@@ -86,7 +89,8 @@ services:
       BACKEND_URL: http://backend:3000
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       SYNC_HISTORY: ${SYNC_HISTORY:-true}
-      SYNC_LIMIT: ${SYNC_LIMIT:-30}
+      SYNC_LIMIT: ${SYNC_LIMIT:-1000}
+      SYNC_PAGE: ${SYNC_PAGE:-100}
       MEDIA_DIR: /app/media
       MAX_MEDIA_MB: ${MAX_MEDIA_MB:-16}
     volumes:

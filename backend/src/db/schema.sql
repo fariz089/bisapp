@@ -82,6 +82,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_message
   ON messages(account_id, wa_message_id) WHERE wa_message_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
 
+-- Waktu ASLI pesan dari WhatsApp (epoch detik dari device pengirim).
+-- Dipakai untuk MENGURUTKAN transkrip sesuai kejadian nyata, bukan urutan insert DB.
+-- Saat sinkronisasi riwayat, webhook bisa masuk paralel/acak sehingga m.id (urutan
+-- insert) TIDAK mencerminkan kronologi. Kolom ini memperbaikinya.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS wa_timestamp TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_msg_conv_ts
+  ON messages(conversation_id, wa_timestamp);
+
 -- Penilaian kualitas komunikasi karyawan (oleh AI), per percakapan
 CREATE TABLE IF NOT EXISTS agent_evaluations (
   id              SERIAL PRIMARY KEY,

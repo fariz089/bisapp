@@ -207,7 +207,10 @@ export async function analyzeSentiment(text) {
     score = Math.max(-1, Math.min(1, score));
     return { score, label: j.label || 'netral', kesan: j.kesan || '' };
   } catch {
-    return { score: 0, label: 'netral', kesan: '' };
+    // Gagal menilai (mis. rate limit 429). Kembalikan null — JANGAN catat 0,
+    // karena 0 = "netral nyata" dan akan mengunci data jadi netral selamanya.
+    // Dengan null, pemanggil membiarkan sentiment tetap NULL untuk dicoba ulang.
+    return null;
   }
 }
 
@@ -223,9 +226,12 @@ export async function summarizeCustomer(history) {
       { temperature: 0.2, maxTokens: 120, json: true }
     );
     const j = JSON.parse(out);
-    return { behavior_tag: j.behavior_tag || 'netral', note: j.note || '' };
+    if (!j || !j.behavior_tag) return null;
+    return { behavior_tag: j.behavior_tag, note: j.note || '' };
   } catch {
-    return { behavior_tag: 'netral', note: '' };
+    // Gagal (mis. rate limit 429 / JSON rusak): kembalikan null agar pemanggil
+    // TIDAK menimpa arketipe yang sudah ada dengan 'netral' palsu.
+    return null;
   }
 }
 

@@ -21,10 +21,9 @@ export async function heartbeat(agentId) {
 export async function pickAgentForHandover() {
   const { rows } = await query(
     `SELECT ag.id, ag.name,
-            COUNT(c.id) FILTER (
-              WHERE c.assigned_agent=ag.id AND c.status<>'resolved'
-            ) AS beban
+            COUNT(c.id) FILTER (WHERE c.status<>'resolved') AS beban
        FROM agents ag
+       LEFT JOIN conversations c ON c.assigned_agent=ag.id
       WHERE ag.role='agent' AND ag.active=true
         AND ag.online=true
         AND ag.last_seen IS NOT NULL

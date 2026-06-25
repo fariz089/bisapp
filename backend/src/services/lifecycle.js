@@ -208,6 +208,8 @@ async function remindDepartures() {
 
 // ---- Housekeeping jarang (tiap menit): bayar kadaluarsa, presence basi, pengingat, broadcast ----
 let _lastReminderDay = null;
+let _backfillFails = 0;   // berapa siklus berturut backfill gagal (untuk backoff)
+let _backfillSkip = 0;    // sisa siklus yang harus dilewati sebelum coba lagi
 async function housekeeping() {
   try { await expireOverdue(); } catch (e) { console.error('[lifecycle] expireOverdue:', e.message); }
   try { await reapStalePresence(); } catch (e) { console.error('[lifecycle] reapPresence:', e.message); }
@@ -218,9 +220,25 @@ async function housekeeping() {
 
   // Kejar skor sentimen pesan lama/historis yang belum dinilai (sedikit demi sedikit,
   // agar panel "Pembacaan Mood" menghitung SELURUH pesan, bukan hanya yang dinilai live).
+  // BACKOFF: bila satu batch gagal total (scored=0 padahal masih ada sisa), kemungkinan
+  // besar LLM sedang kena rate limit (429). Jeda beberapa siklus sebelum mencoba lagi
+  // agar tidak terus-menerus menembak API dan memperparah 429 (lihat log lama).
   try {
-    const { scored, remaining } = await backfillSentimentBatch({ batchSize: 25 });
-    if (scored > 0) console.log(`[lifecycle] backfill sentimen: +${scored} dinilai, sisa ${remaining}.`);
+    if (_backfillSkip > 0) {
+      _backfillSkip--;
+    } else {
+      const batchSize = Number(process.env.SENTIMENT_BATCH || 15);
+      const { scored, remaining } = await backfillSentimentBatch({ batchSize });
+      if (scored > 0) {
+        console.log(`[lifecycle] backfill sentimen: +${scored} dinilai, sisa ${remaining}.`);
+        _backfillFails = 0;
+      } else if (remaining > 0) {
+        // Tidak ada yang berhasil padahal masih ada sisa -> mundur (maks ~10 menit).
+        _backfillFails = Math.min(_backfillFails + 1, 10);
+        _backfillSkip = _backfillFails;
+        console.warn(`[lifecycle] backfill sentimen ditunda ${_backfillSkip} siklus (kemungkinan rate limit).`);
+      }
+    }
   } catch (e) { console.error('[lifecycle] backfill sentimen:', e.message); }
 
   // Pengingat H-1 dijalankan sekali per hari, pada/Setelah jam yang dikonfigurasi (default 09:00 lokal).

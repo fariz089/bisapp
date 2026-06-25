@@ -116,7 +116,8 @@ app.get('/api/conversations/:id/messages', authMiddleware, async (req, res) => {
   const { rows } = await query(
     `SELECT m.*, ag.name AS agent_name FROM messages m
        LEFT JOIN agents ag ON ag.id=m.agent_id
-      WHERE m.conversation_id=$1 ORDER BY m.id ASC`, [req.params.id]);
+      WHERE m.conversation_id=$1
+      ORDER BY COALESCE(m.wa_timestamp, m.created_at) ASC, m.id ASC`, [req.params.id]);
   res.json(rows);
 });
 
@@ -271,7 +272,7 @@ app.get('/api/insights/overview', authMiddleware, async (req, res) => {
              COUNT(m.id) FILTER (WHERE m.sender_type='customer')::int AS pesan,
              ROUND(AVG(m.sentiment) FILTER (WHERE m.sender_type='customer'),3) AS mood
         FROM days d
-        LEFT JOIN messages m ON m.created_at::date = d.hari
+        LEFT JOIN messages m ON COALESCE(m.wa_timestamp, m.created_at)::date = d.hari
        GROUP BY d.hari ORDER BY d.hari`)).rows;
 
     // Rute terlaris (AKAP) berdasarkan jumlah booking
@@ -304,6 +305,22 @@ app.post('/api/insights/backfill-sentiment', authMiddleware, async (req, res) =>
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- Reset sentimen ber-teks yang ter-set 0 (admin) ----------
+// Versi lama menyimpan 0 ("netral") saat penilaian LLM GAGAL (mis. 429), sehingga
+// data terkunci netral. Endpoint ini meng-NULL-kan kembali skor 0 pada pesan yang
+// SEBENARNYA berisi teks, agar scheduler menilainya ulang dengan benar.
+// Pesan tanpa teks (media) dibiarkan 0 (memang netral). Aman dipanggil sekali.
+app.post('/api/insights/reset-neutral', authMiddleware, async (req, res) => {
+  if (req.agent.role !== 'admin') return res.status(403).json({ error: 'Hanya admin' });
+  try {
+    const r = await query(
+      `UPDATE messages SET sentiment=NULL
+        WHERE sender_type='customer' AND sentiment=0
+          AND body IS NOT NULL AND length(trim(body)) > 0`);
+    res.json({ ok: true, reset: r.rowCount, info: 'Sentimen 0 berteks di-NULL-kan; scheduler akan menilai ulang.' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---------- INSIGHT per percakapan (panel mood di samping chat) ----------
 // Cache kesan kualitatif agar tidak memanggil LLM tiap refresh panel.
 // Regenerasi hanya bila jumlah pesan customer bertambah.
@@ -321,7 +338,7 @@ app.get('/api/conversations/:id/insight', authMiddleware, async (req, res) => {
     const { rows } = await query(
       `SELECT sentiment, created_at FROM messages
         WHERE conversation_id=$1 AND sender_type='customer' AND sentiment IS NOT NULL
-        ORDER BY id ASC`, [id]);
+        ORDER BY COALESCE(wa_timestamp, created_at) ASC, id ASC`, [id]);
     const series = rows.map(r => Number(r.sentiment));
     const count = series.length;
     const avg = count ? Math.round((series.reduce((a, b) => a + b, 0) / count) * 1000) / 1000 : null;
@@ -436,7 +453,7 @@ app.get('/api/dashboard', authMiddleware, async (req, res) => {
       SELECT to_char(d.hari,'YYYY-MM-DD') AS hari,
              COUNT(m.id) FILTER (WHERE m.direction='in')::int AS masuk,
              COUNT(m.id) FILTER (WHERE m.direction='out')::int AS keluar
-        FROM days d LEFT JOIN messages m ON m.created_at::date=d.hari
+        FROM days d LEFT JOIN messages m ON COALESCE(m.wa_timestamp, m.created_at)::date=d.hari
        GROUP BY d.hari ORDER BY d.hari`)).rows;
 
     res.json({ live, closures, followups, sales, queue, volume, config: lifecycleConfig });
