@@ -130,19 +130,25 @@ async function tick() {
         LIMIT 50`
     );
 
+    // Saklar global AI: bila dimatikan, AI tidak mengirim nudge maupun pesan
+    // penutup ke customer. Sesi tetap di-auto-close agar tidak menggantung.
+    const aiEnabled = await getSetting('ai_enabled', true).catch(() => true);
+
     for (const convo of rows) {
       const idleMin = convo.idle_sec / 60;
 
       // 1) Sudah waktunya auto-close?
       if (idleMin >= CLOSE_AFTER_MIN) {
-        // kirim penutup hanya bila masih ada koneksi WA aktif; kalau gagal, tetap tutup.
-        await sendSystemMessage(convo, CLOSING_TEXT, 'closing').catch(() => {});
+        // kirim penutup hanya bila AI aktif & masih ada koneksi WA; kalau gagal, tetap tutup.
+        if (aiEnabled) {
+          await sendSystemMessage(convo, CLOSING_TEXT, 'closing').catch(() => {});
+        }
         await closeConversation(convo, convo.assigned_agent ? 'timeout' : 'resolved_by_ai');
         continue;
       }
 
-      // 2) Sudah waktunya nudge & belum melebihi batas?
-      if (idleMin >= FOLLOWUP_AFTER_MIN && convo.followups_sent < MAX_FOLLOWUPS) {
+      // 2) Sudah waktunya nudge & belum melebihi batas? (lewati bila AI dimatikan)
+      if (aiEnabled && idleMin >= FOLLOWUP_AFTER_MIN && convo.followups_sent < MAX_FOLLOWUPS) {
         const history = await getHistory(convo.id, 12);
         const text = await followupMessage(history).catch(() =>
           'Halo kak, masih di sini? 😊 Ada lagi yang bisa kami bantu soal tiket atau sewa busnya?');

@@ -168,6 +168,14 @@ tbody tr:hover{background:var(--brand-wash-2)}
 .form-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px;box-shadow:var(--shadow-sm);margin-bottom:14px}
 .form-card h3{font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
 .stack>*{margin-bottom:10px}.stack>*:last-child{margin-bottom:0}
+/* Saklar AI on/off */
+.ai-switch{position:relative;display:inline-block;width:58px;height:32px;flex:0 0 auto}
+.ai-switch input{opacity:0;width:0;height:0}
+.ai-slider{position:absolute;cursor:pointer;inset:0;background:var(--muted-2,#94a3b8);border-radius:32px;transition:.2s}
+.ai-slider:before{content:"";position:absolute;height:24px;width:24px;left:4px;top:4px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.ai-switch input:checked+.ai-slider{background:var(--ok,#16a34a)}
+.ai-switch input:checked+.ai-slider:before{transform:translateX(26px)}
+.ai-switch input:focus-visible+.ai-slider{outline:2px solid var(--accent,#2563eb);outline-offset:2px}
 
 /* tabs (segmented) */
 .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:4px;gap:3px}
@@ -1389,6 +1397,7 @@ let _settings={};
 async function loadSettings(){
   try{ _settings=await api('/settings'); }catch{ $('settingsBody').innerHTML='<div class="empty">Gagal memuat</div>'; return; }
   const bh=_settings.business_hours||{days:{}}; const pi=_settings.payment_info||{};
+  const aiOn=_settings.ai_enabled!==false; // default menyala bila belum pernah diatur
   const dayNames=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
   const isAdmin=me&&me.role==='admin';
   const dis=isAdmin?'':'disabled';
@@ -1403,6 +1412,25 @@ async function loadSettings(){
   }).join('');
 
   $('settingsBody').innerHTML=`
+    <div class="form-card" style="margin-bottom:16px;border-left:3px solid ${aiOn?'var(--ok,#16a34a)':'var(--danger,#dc2626)'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <h3 style="margin:0">🤖 Balasan AI</h3>
+          <p style="font-size:12.5px;color:var(--muted);margin:6px 0 0">
+            Saklar utama AI untuk SEMUA chat. Bila <b>dimatikan</b>, AI berhenti membalas siapa pun
+            (termasuk follow-up otomatis) — semua chat menunggu dibalas staf secara manual.
+            Bila <b>dinyalakan</b>, AI kembali membalas otomatis seperti biasa.
+          </p>
+          <p style="font-size:12.5px;margin:8px 0 0;font-weight:600;color:${aiOn?'var(--ok,#16a34a)':'var(--danger,#dc2626)'}">
+            Status saat ini: ${aiOn?'AI menyala — membalas otomatis':'AI dimatikan — tidak membalas'}
+          </p>
+        </div>
+        ${isAdmin?`<label class="ai-switch" title="Nyalakan / matikan AI">
+          <input type="checkbox" id="ai_enabled" ${aiOn?'checked':''} onchange="saveAiEnabled(this.checked)">
+          <span class="ai-slider"></span>
+        </label>`:'<p style="font-size:12px;color:var(--muted-2)">Hanya admin yang dapat mengubah.</p>'}
+      </div>
+    </div>
     <div class="ins-grid">
       <div class="form-card">
         <h3>🕐 Jam kerja</h3>
@@ -1440,6 +1468,13 @@ async function loadSettings(){
         <button class="btn btn-sm" onclick="downloadReport('sales')">⬇️ Penjualan / booking (CSV)</button>
       </div>
     </div>`;
+}
+async function saveAiEnabled(on){
+  const r=await api('/settings/ai_enabled',{method:'PUT',body:JSON.stringify(!!on)});
+  if(r.error){ toast(r.error,'err'); return; }
+  _settings.ai_enabled=!!on;
+  toast(on?'AI dinyalakan — membalas otomatis':'AI dimatikan — tidak membalas chat','ok');
+  loadSettings(); // segarkan label & warna status
 }
 async function saveBusinessHours(){
   const days={};

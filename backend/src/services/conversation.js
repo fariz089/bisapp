@@ -261,6 +261,10 @@ export async function handleIncoming({ session, waId, name, body, waMessageId, m
     await query('UPDATE conversations SET lang=$1 WHERE id=$2', [lang, convo.id]);
   }
 
+  // Saklar global AI: bila admin mematikan AI dari Pengaturan, AI tidak membalas
+  // siapa pun. Pesan tetap tersimpan & masuk dashboard untuk dijawab manual oleh staf.
+  const aiEnabled = await getSetting('ai_enabled', true).catch(() => true);
+
   // ===== Bukti transfer (gambar) =====
   // Bila customer mengirim GAMBAR dan ada tagihan aktif di percakapan ini, AI membaca
   // bukti & mengisi pra-verifikasi. Berlaku di mode AI maupun human (membantu staf).
@@ -284,8 +288,8 @@ export async function handleIncoming({ session, waId, name, body, waMessageId, m
         } else {
           ack = 'Terima kasih, bukti sudah kami terima. Gambar akan kami periksa manual oleh tim ya 🙏';
         }
-        // Mode AI: kirim ack otomatis. Mode human: biar agen yang menanggapi (cukup beri sinyal).
-        if (convo.mode === 'ai') {
+        // Mode AI: kirim ack otomatis. Mode human / AI dimatikan: biar agen yang menanggapi.
+        if (convo.mode === 'ai' && aiEnabled) {
           await sendFn(session, waId, ack);
           const am = await saveMessage({
             conversation_id: convo.id, account_id: account.id,
@@ -305,6 +309,13 @@ export async function handleIncoming({ session, waId, name, body, waMessageId, m
 
   // Jika mode human -> jangan balas AI, biarkan karyawan
   if (convo.mode === 'human') {
+    io?.emit('conversation:update', { conversationId: convo.id });
+    return;
+  }
+
+  // Saklar global AI dimatikan -> AI tidak membalas siapa pun.
+  // Pesan sudah tersimpan & dikirim ke dashboard; staf membalas manual.
+  if (!aiEnabled) {
     io?.emit('conversation:update', { conversationId: convo.id });
     return;
   }

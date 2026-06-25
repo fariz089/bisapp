@@ -51,7 +51,7 @@ services:
       # Eskalasi pintar
       AGENT_ONLINE_GRACE_SEC: ${AGENT_ONLINE_GRACE_SEC:-90}
     ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      - "${BACKEND_PORT:-4000}:3000"
     volumes:
       - media_data:/app/media
 
