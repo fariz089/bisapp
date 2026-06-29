@@ -978,7 +978,7 @@ async function loadConversations(){
     return `<div class="conv ${currentConv&&currentConv.id===c.id?'active':''}" onclick='openConv(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
       <div class="l1"><span class="nm">${esc(displayName(c))}</span>${tag}</div>
       <div class="l2"><span class="chan">${esc(c.account_label)}</span></div>
-      <div class="l3"><span class="dotmood ${moodClass(s)}" title="${moodLabel(s)}"></span>${beh||`<span style="font-size:11.5px;color:var(--muted-2)">${moodLabel(s)}</span>`}</div>
+      <div class="l3"><span class="dotmood ${moodClass(s)}" title="${moodLabel(s)}"></span>${beh||`<span style="font-size:11.5px;font-weight:600;color:${moodColor(s)}">${moodLabel(s)}</span>`}</div>
     </div>`;
   }).join('');
 }
