@@ -37,10 +37,17 @@ async function chat(messages, { temperature = 0.4, maxTokens = 600, json = false
 
 // --- Persona AI agent untuk usaha bis ---
 function systemPrompt(knowledge, accountLabel, ticketCtx, opts = {}) {
-  const { lang, afterHours, afterHoursMessage } = opts;
+  const { lang, afterHours, afterHoursMessage, quickReplies } = opts;
   const kb = knowledge && knowledge.length
     ? knowledge.map(k => `- [${k.category}] ${k.question}\n  Jawab: ${k.answer}`).join('\n')
     : '(belum ada data knowledge base)';
+
+  // Template jawaban (quick replies) yang dibuat admin. Diberikan ke AI sebagai
+  // CONTOH gaya & isi balasan baku (mis. sapaan, info rekening, prosedur) agar AI
+  // konsisten dengan standar perusahaan. AI boleh menyesuaikan seperlunya.
+  const tmpl = quickReplies && quickReplies.length
+    ? quickReplies.map(q => `- ${q.title}: ${q.body}`).join('\n')
+    : '(belum ada template)';
 
   let jadwal = '(belum ada jadwal AKAP)';
   let carter = '(belum ada paket pariwisata)';
@@ -108,7 +115,10 @@ PAKET PARIWISATA / CARTER TERSEDIA:
 ${carter}
 
 KNOWLEDGE BASE TAMBAHAN:
-${kb}`;
+${kb}
+
+TEMPLATE JAWABAN BAKU (gunakan sebagai acuan gaya & isi bila relevan; sesuaikan seperlunya, jangan dipaksakan):
+${tmpl}`;
 }
 
 // Susun riwayat untuk konteks (maks N pesan terakhir)
@@ -122,9 +132,9 @@ function buildHistory(history) {
 // AI menjawab pesan customer.
 // Mengembalikan { reply, handover, action } di mana action (opsional) adalah
 // objek hasil parse token [[ACTION:{...}]] untuk dieksekusi oleh backend.
-export async function aiReply({ knowledge, accountLabel, history, userText, ticketCtx, lang, afterHours }) {
+export async function aiReply({ knowledge, accountLabel, history, userText, ticketCtx, lang, afterHours, quickReplies }) {
   const messages = [
-    { role: 'system', content: systemPrompt(knowledge, accountLabel, ticketCtx, { lang, afterHours }) },
+    { role: 'system', content: systemPrompt(knowledge, accountLabel, ticketCtx, { lang, afterHours, quickReplies }) },
     ...buildHistory(history).slice(-12),
     { role: 'user', content: userText },
   ];

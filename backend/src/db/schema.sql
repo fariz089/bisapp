@@ -63,6 +63,14 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE INDEX IF NOT EXISTS idx_conv_open_lastmsg
   ON conversations(status, last_message_at) WHERE status <> 'resolved';
 
+-- Skor mood PER-PERCAKAPAN (-1..1) yang dihitung sama persis dengan dial di panel
+-- konteks chat. Daftar percakapan membaca kolom ini agar titik/tulisan mood di kiri
+-- SAMA dengan dial di kanan — tanpa harus klik dulu. Diperbarui tiap kali insight
+-- dihitung & saat sentimen pesan baru masuk.
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS mood_score NUMERIC(4,3);
+-- Apakah percakapan pernah ditutup lalu dibuka kembali oleh agen (utk audit ringan).
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ;
+
 -- Pesan (sumber kebenaran riwayat chat, anti hilang saat HP rusak)
 CREATE TABLE IF NOT EXISTS messages (
   id              BIGSERIAL PRIMARY KEY,

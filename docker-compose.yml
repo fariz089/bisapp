@@ -6,6 +6,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-bis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bispass}
       POSTGRES_DB: ${POSTGRES_DB:-bisdb}
+    # Buka port Postgres ke host agar bisa diakses dari Navicat/DBeaver.
+    # Host pakai ${DB_PORT} (default 5432). Bila 5432 sudah dipakai di server,
+    # ganti DB_PORT di .env (mis. 55432) lalu sambungkan Navicat ke port itu.
+    # KEAMANAN: ini mengekspos DB ke jaringan host. Untuk produksi, batasi lewat
+    # firewall, gunakan password kuat, atau akses via SSH tunnel ke 127.0.0.1.
+    ports:
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:

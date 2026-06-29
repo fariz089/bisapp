@@ -43,6 +43,44 @@ export async function isAiEnabled() {
   return v !== false;                             // bentuk lama: boolean langsung
 }
 
+// Normalisasi nomor ke digit saja (untuk perbandingan allowlist yang toleran format).
+function digitsOnly(p) { return String(p || '').replace(/\D/g, ''); }
+
+// Bentuk kanonik nomor Indonesia agar '08xxx', '8xxx', dan '628xxx' dianggap sama.
+// Kembalikan inti nomor tanpa awalan negara/0 (mis. '8123456789').
+function canonId(p) {
+  let d = digitsOnly(p);
+  if (d.startsWith('62')) d = d.slice(2);
+  else if (d.startsWith('0')) d = d.slice(1);
+  return d;
+}
+
+// Daftar nomor yang TETAP dibalas AI walau saklar global AI dimatikan. Berguna untuk
+// MENGUJI Balasan AI / Materi AI / template pada nomor tertentu (mis. nomor admin)
+// tanpa menyalakan AI untuk semua pelanggan. Disimpan sebagai {numbers:[...]}.
+export async function getAiAllowlist() {
+  const v = await getSetting('ai_allowlist', null).catch(() => null);
+  const arr = Array.isArray(v) ? v : (v && Array.isArray(v.numbers) ? v.numbers : []);
+  return arr.map(digitsOnly).filter(d => d.length >= 8 && d.length <= 15);
+}
+
+// Apakah AI boleh membalas untuk customer ini?
+// - Bila AI global MENYALA  -> selalu boleh (kecuali kelak ada blocklist).
+// - Bila AI global MATI      -> hanya boleh bila nomornya ada di allowlist (mode uji).
+export async function aiEnabledForPhone(phoneOrWaId) {
+  if (await isAiEnabled()) return true;
+  const d = digitsOnly(phoneOrWaId);
+  if (d.length < 8) return false;
+  const allow = await getAiAllowlist();
+  const target = canonId(d);
+  // Cocokkan via bentuk kanonik Indonesia (08/62/8 dianggap sama), dengan fallback
+  // pencocokan akhiran untuk format internasional lain.
+  return allow.some(a => {
+    const ca = canonId(a);
+    return ca === target || a === d || a.endsWith(d) || d.endsWith(a);
+  });
+}
+
 // --- Jam kerja ---
 // Mengembalikan {open:boolean, reason, message} berdasarkan setting 'business_hours'.
 // Catatan: perhitungan zona waktu memakai TZ proses (di-set di docker-compose / env).

@@ -61,6 +61,15 @@ app.post('/api/login', async (req, res) => {
   res.json({ token: signToken(agent), agent: { id: agent.id, name: agent.name, role: agent.role } });
 });
 
+// Validasi token tersimpan (dipakai frontend saat refresh agar tidak balik ke login).
+// Mengembalikan profil agen bila token masih valid & akun masih aktif.
+app.get('/api/me', authMiddleware, async (req, res) => {
+  const { rows } = await query('SELECT id, name, role, active FROM agents WHERE id=$1', [req.agent.id]);
+  const agent = rows[0];
+  if (!agent || agent.active === false) return res.status(401).json({ error: 'Akun tidak aktif' });
+  res.json({ agent: { id: agent.id, name: agent.name, role: agent.role } });
+});
+
 // ---------- WEBHOOK dari WA service (pesan masuk) ----------
 app.post('/api/webhook/incoming', webhookAuth, async (req, res) => {
   res.json({ ok: true }); // balas cepat
@@ -102,7 +111,8 @@ app.get('/api/conversations', authMiddleware, async (req, res) => {
   const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
   const { rows } = await query(
     `SELECT c.*, cu.name AS customer_name, cu.phone, cu.wa_id, cu.behavior_tag, cu.behavior_note,
-            cu.avg_sentiment, a.label AS account_label, ag.name AS agent_name
+            COALESCE(c.mood_score, cu.avg_sentiment) AS avg_sentiment,
+            a.label AS account_label, ag.name AS agent_name
        FROM conversations c
        JOIN customers cu ON cu.id=c.customer_id
        JOIN wa_accounts a ON a.id=c.account_id
@@ -175,6 +185,22 @@ app.post('/api/conversations/:id/resolve', authMiddleware, async (req, res) => {
       }
     }
   } catch (e) { console.error('[eval] gagal:', e.message); }
+});
+
+// Buka kembali percakapan yang sudah diselesaikan (mis. ditutup tidak sengaja, atau
+// customer kembali menanyakan hal yang sama). Mengembalikan status ke 'open' dan
+// menyerahkan ke agen yang membuka. Catatan: bila customer mengirim pesan BARU setelah
+// sesi ditutup, sistem otomatis membuat percakapan baru (sesi baru) — reopen ini untuk
+// melanjutkan sesi LAMA secara manual dari sisi agen.
+app.post('/api/conversations/:id/reopen', authMiddleware, async (req, res) => {
+  const id = +req.params.id;
+  await query(
+    `UPDATE conversations
+        SET status='open', mode='human', assigned_agent=$1,
+            resolved_at=NULL, close_reason=NULL, reopened_at=now()
+      WHERE id=$2`, [req.agent.id, id]);
+  io.emit('conversation:update', { conversationId: id });
+  res.json({ ok: true });
 });
 
 // Tag/label percakapan (tambah / hapus)
@@ -414,6 +440,12 @@ app.get('/api/conversations/:id/insight', authMiddleware, async (req, res) => {
     if (mood != null) mood = Math.max(-1, Math.min(1, Math.round(mood * 1000) / 1000));
 
     // avg = skor yang DITAMPILKAN di dial (mood representatif). series tetap mentah utk sparkline.
+    // Simpan mood ini ke percakapan agar DAFTAR di kiri memakai angka yang SAMA
+    // dengan dial — tanpa user harus mengklik percakapan dulu.
+    if (mood != null) {
+      await query('UPDATE conversations SET mood_score=$1 WHERE id=$2', [mood, id]).catch(() => {});
+      io.emit('conversation:mood', { conversationId: id, mood });
+    }
     res.json({ count, avg: mood, mean: mean == null ? null : Math.round(mean * 1000) / 1000, trend, series, impression });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -353,11 +353,10 @@ tbody tr:hover{background:var(--brand-wash-2)}
       <h2>Masuk ke konsol</h2>
       <p class="lead">Kelola percakapan, tiket, dan performa tim dalam satu layar.</p>
       <label class="fld" for="email">Email</label>
-      <input id="email" placeholder="nama@perusahaan.com" value="admin@bis.local" autocomplete="username" />
+      <input id="email" placeholder="nama@perusahaan.com" autocomplete="username" />
       <label class="fld" for="password">Kata sandi</label>
-      <input id="password" type="password" placeholder="Masukkan kata sandi" value="admin123" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()" />
+      <input id="password" type="password" placeholder="Masukkan kata sandi" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()" />
       <button class="btn block" onclick="login()">Masuk</button>
-      <div class="cred-hint">Akun awal: <b>admin@bis.local</b> · <b>admin123</b> — ganti melalui menu Karyawan setelah masuk.</div>
       <p id="loginErr"></p>
     </div>
   </div>
@@ -774,7 +773,11 @@ tbody tr:hover{background:var(--brand-wash-2)}
 <script>
 /* ============================= CORE ============================= */
 let token=null, me=null, socket=null, currentConv=null, accounts=[], quickReplies=[], activeView='chats';
-const api=(p,o={})=>fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...(o.headers||{})}}).then(r=>r.json());
+const api=(p,o={})=>fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...(o.headers||{})}}).then(r=>{
+  // Token kedaluwarsa/invalid saat sesi berjalan -> bersihkan & kembali ke login.
+  if(r.status===401 && token){ try{ localStorage.removeItem('halte_token'); }catch{} token=null; if(!$('login').classList.contains('hidden')){} else { location.reload(); } }
+  return r.json();
+}).catch(e=>{ throw e; });
 const $=id=>document.getElementById(id);
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const rupiah=n=>'Rp'+Number(n||0).toLocaleString('id-ID');
@@ -853,6 +856,14 @@ const BEHAVIOR={
 const behaviorOf=t=>BEHAVIOR[t]||BEHAVIOR.netral;
 
 /* ============================= AUTH ============================= */
+const TOKEN_KEY='halte_token';
+// Masuk ke aplikasi setelah token & profil didapat (dipakai login manual & restore sesi).
+function enterApp(){
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('meName').textContent=me.name; $('meRole').textContent=me.role==='admin'?'Administrator':'Agen';
+  $('meAvatar').textContent=initials(me.name);
+  initSocket(); loadAccounts(); loadConversations(); refreshConnPill(); loadQuickReplies();
+}
 async function login(){
   const email=$('email').value, password=$('password').value;
   $('loginErr').textContent='';
@@ -860,12 +871,27 @@ async function login(){
   catch{ $('loginErr').textContent='Tidak dapat terhubung ke server.'; return; }
   if(r.error){ $('loginErr').textContent=r.error; return; }
   token=r.token; me=r.agent;
-  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
-  $('meName').textContent=me.name; $('meRole').textContent=me.role==='admin'?'Administrator':'Agen';
-  $('meAvatar').textContent=initials(me.name);
-  initSocket(); await loadAccounts(); await loadConversations(); refreshConnPill(); loadQuickReplies();
+  try{ localStorage.setItem(TOKEN_KEY, token); }catch{}   // bertahan saat refresh
+  enterApp();
 }
-function logout(){ location.reload(); }
+function logout(){
+  try{ localStorage.removeItem(TOKEN_KEY); }catch{}
+  token=null; me=null; location.reload();
+}
+// Saat halaman dimuat: bila ada token tersimpan & masih valid, langsung masuk —
+// tidak balik ke layar login setiap refresh.
+async function tryRestoreSession(){
+  let saved=null; try{ saved=localStorage.getItem(TOKEN_KEY); }catch{}
+  if(!saved) return;
+  token=saved;
+  try{
+    const r=await fetch('/api/me',{headers:{'Authorization':'Bearer '+saved}}).then(r=>r.json());
+    if(r&&r.agent){ me=r.agent; enterApp(); return; }
+  }catch{}
+  // Token kedaluwarsa / tidak valid -> bersihkan, tetap di layar login.
+  try{ localStorage.removeItem(TOKEN_KEY); }catch{} token=null;
+}
+document.addEventListener('DOMContentLoaded', tryRestoreSession);
 
 function initSocket(){
   socket=io({ auth:{ token } });
@@ -874,6 +900,13 @@ function initSocket(){
   socket.on('message:new',e=>{ if(currentConv&&e.conversationId===currentConv.id){appendMessage(e.message); refreshCtxPanel();} markDirty(); if(activeView==='dashboard')loadDashboard(); });
   socket.on('conversation:handover',e=>{ markDirty(); if(activeView==='dashboard')loadDashboard(); if(e&&e.assignedAgent&&me&&e.assignedAgent===me.id){ toast('Percakapan baru diberikan ke Anda.'); } });
   socket.on('conversation:update',()=>{ markDirty(); if(activeView==='dashboard')loadDashboard(); });
+  // Mood per-percakapan diperbarui di server -> segarkan titik mood di daftar tanpa fetch ulang.
+  socket.on('conversation:mood',e=>{
+    if(!e||e.mood==null)return;
+    const dot=document.querySelector('.conv.active .dotmood');
+    if(currentConv&&e.conversationId===currentConv.id){ currentConv.avg_sentiment=e.mood; }
+    markDirty();
+  });
   socket.on('agent:assigned',e=>{ if(activeView==='dashboard')loadDashboard(); });
   socket.on('conversation:nudge',e=>{ if(activeView==='dashboard')loadDashboard(); toast('AI menyenggol pelanggan yang menunggu agen.'); });
   socket.on('booking:new',()=>{ if(activeView==='dashboard')loadDashboard(); });
@@ -965,10 +998,12 @@ async function openConv(c){
       </div>
     </div>
     <div class="actions">
-      ${isHuman?'<button class="btn-ghost btn-sm" onclick="release()">↩ Kembali ke AI</button>':'<button class="btn-warn btn-sm" onclick="take()">Ambil alih</button>'}
-      <button class="btn-ok btn-sm" onclick="resolve()">Selesai</button>
+      ${c.status==='resolved'
+        ? '<button class="btn-warn btn-sm" onclick="reopen()">↺ Buka kembali</button>'
+        : `${isHuman?'<button class="btn-ghost btn-sm" onclick="release()">↩ Kembali ke AI</button>':'<button class="btn-warn btn-sm" onclick="take()">Ambil alih</button>'}
+           <button class="btn-ok btn-sm" onclick="resolve()">Selesai</button>`}
     </div>`;
-  $('composer').classList.toggle('hidden',!isHuman);
+  $('composer').classList.toggle('hidden',!(isHuman && c.status!=='resolved'));
   if(isHuman) renderQuickBar();
   $('ctxPanel').classList.remove('hidden');
   const msgs=await api('/conversations/'+c.id+'/messages');
@@ -1005,7 +1040,11 @@ function msgEl(m){
   const who=m.sender_type==='ai'?'AI':(m.sender_type==='agent'?(m.agent_name||'Agen'):'');
   const time=msgTime(m).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
   const bub=document.createElement('div'); bub.className='bub '+(out?('out '+kind):'in');
-  bub.innerHTML=`${mediaHtml(m)}${esc(m.body)}<div class="meta">${who?esc(who)+' · ':''}${time}</div>`;
+  // Pesan tanpa teks DAN tanpa media (mis. notifikasi sistem / jenis tak dikenal):
+  // tampilkan penanda diam agar tidak muncul gelembung kosong yang membingungkan.
+  const hasText=!!(m.body&&String(m.body).trim());
+  const bodyHtml=hasText?esc(m.body):(m.media_url?'':'<span style="color:var(--muted-2);font-style:italic">pesan tanpa teks</span>');
+  bub.innerHTML=`${mediaHtml(m)}${bodyHtml}<div class="meta">${who?esc(who)+' · ':''}${time}</div>`;
   row.appendChild(bub); return row;
 }
 function appendMessage(m){
@@ -1033,6 +1072,11 @@ async function resolve(){
   toast('Percakapan diselesaikan','ok'); currentConv=null;
   $('chatLive').classList.add('hidden'); $('chatEmpty').classList.remove('hidden');
   $('ctxPanel').classList.add('hidden'); loadConversations();
+}
+async function reopen(){
+  await api('/conversations/'+currentConv.id+'/reopen',{method:'POST'});
+  currentConv.status='open'; currentConv.mode='human';
+  openConv(currentConv); toast('Percakapan dibuka kembali','ok');
 }
 
 /* ---------- quick reply bar in composer ---------- */
@@ -1476,6 +1520,9 @@ async function loadSettings(){
   // ai_enabled disimpan sbg {enabled:bool}. Toleransi bentuk lama (boolean langsung).
   const aiRaw=_settings.ai_enabled;
   const aiOn=(aiRaw && typeof aiRaw==='object') ? aiRaw.enabled!==false : aiRaw!==false; // default menyala
+  // ai_allowlist: {numbers:[...]} atau array langsung. Nomor yang tetap dibalas AI saat global mati.
+  const allowRaw=_settings.ai_allowlist;
+  const aiAllow=Array.isArray(allowRaw)?allowRaw:(allowRaw&&Array.isArray(allowRaw.numbers)?allowRaw.numbers:[]);
   const dayNames=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
   const isAdmin=me&&me.role==='admin';
   const dis=isAdmin?'':'disabled';
@@ -1508,6 +1555,16 @@ async function loadSettings(){
           <span class="ai-slider"></span>
         </label>`:'<p style="font-size:12px;color:var(--muted-2)">Hanya admin yang dapat mengubah.</p>'}
       </div>
+      ${isAdmin?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+        <label class="fld" style="display:flex;align-items:center;gap:8px">🧪 Nomor uji AI (allowlist)</label>
+        <p style="font-size:12px;color:var(--muted);margin:4px 0 8px">
+          Saat AI global <b>dimatikan</b>, nomor di sini <b>tetap</b> dibalas AI. Berguna untuk menguji
+          Balasan AI, Materi AI, atau template pada nomor Anda sendiri tanpa menyalakan AI untuk semua
+          pelanggan. Satu nomor per baris (mis. <code>628123456789</code>). Saat AI global menyala, daftar ini diabaikan.
+        </p>
+        <textarea id="ai_allow" rows="3" placeholder="628123456789&#10;6281122334455">${esc((aiAllow||[]).join('\n'))}</textarea>
+        <button class="btn btn-sm" style="margin-top:10px" onclick="saveAiAllowlist()">Simpan nomor uji</button>
+      </div>`:''}
     </div>
     <div class="ins-grid">
       <div class="form-card">
@@ -1553,6 +1610,16 @@ async function saveAiEnabled(on){
   _settings.ai_enabled={enabled:!!on};
   toast(on?'AI dinyalakan — membalas otomatis':'AI dimatikan — tidak membalas chat','ok');
   loadSettings(); // segarkan label & warna status
+}
+async function saveAiAllowlist(){
+  // Pisah per baris/koma, ambil angka saja, validasi 8-15 digit, buang duplikat.
+  const raw=$('ai_allow').value||'';
+  const nums=[...new Set(raw.split(/[\n,;]+/).map(s=>s.replace(/\D/g,'')).filter(d=>d.length>=8&&d.length<=15))];
+  const r=await api('/settings/ai_allowlist',{method:'PUT',body:JSON.stringify({numbers:nums})});
+  if(r.error){ toast(r.error,'err'); return; }
+  _settings.ai_allowlist={numbers:nums};
+  toast(nums.length?`${nums.length} nomor uji disimpan`:'Daftar nomor uji dikosongkan','ok');
+  loadSettings();
 }
 async function saveBusinessHours(){
   const days={};

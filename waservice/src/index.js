@@ -55,6 +55,30 @@ async function downloadMedia(msg) {
   }
 }
 
+// Beberapa jenis pesan WhatsApp TIDAK punya `body` teks (lokasi, kontak/vcard,
+// polling, reaksi, panggilan, pesan sistem, dll). Tanpa penanganan, pesan begini
+// tersimpan dengan body kosong sehingga tampil sebagai GELEMBUNG KOSONG di dashboard.
+// Fungsi ini mengubah pesan tanpa teks menjadi penanda yang manusiawi.
+function bodyForType(msg) {
+  const raw = (msg.body || '').trim();
+  if (raw) return raw;
+  switch (msg.type) {
+    case 'location':       return '[Lokasi dibagikan]';
+    case 'vcard':
+    case 'multi_vcard':    return '[Kontak dibagikan]';
+    case 'poll_creation':  return '[Polling]';
+    case 'revoked':        return '[Pesan ditarik]';
+    case 'e2e_notification':
+    case 'notification_template':
+    case 'gp2':            return '';   // notifikasi sistem murni — lewati saja
+    case 'call_log':       return '[Panggilan]';
+    case 'sticker':        return '';   // stiker = media; biarkan media yang tampil
+    case 'image': case 'video': case 'audio': case 'ptt': case 'document':
+      return '';                          // ada media; caption kosong itu wajar
+    default:               return raw;   // teks kosong asli -> tetap kosong
+  }
+}
+
 let lastQrDataUrl = null;
 let ready = false;
 
@@ -161,7 +185,7 @@ client.on('message', async (msg) => {
     waId: msg.from,            // alamat ROUTABLE (utk balas) — @c.us atau @lid
     phone,                     // MSISDN bersih utk tampilan, atau null
     name: contactName,
-    body: msg.body || '',
+    body: bodyForType(msg),
     waMessageId: msg.id?._serialized,
     waTimestamp: msg.timestamp || null,   // epoch detik dari WhatsApp
     mediaType: msg.hasMedia ? (mediaInfo.mediaType || msg.type || 'media') : null,
@@ -219,7 +243,7 @@ async function syncOldMessages() {
         waId: m.fromMe ? chat.id._serialized : m.from,
         phone,
         name: chat.name || null,
-        body: m.body || '',
+        body: bodyForType(m),
         waMessageId: m.id?._serialized,
         waTimestamp: m.timestamp || null,   // epoch detik dari WhatsApp
         mediaType: m.hasMedia ? (mediaInfo.mediaType || m.type || 'media') : null,

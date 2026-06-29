@@ -4,7 +4,8 @@ import { ticketContextForAI, createAkapBooking, bookedSeats, createCharterBookin
 import { createPaymentForBooking, paymentInstructionText, pendingPaymentForConversation, verifyProofImage } from './payments.js';
 import { businessHoursStatus } from './settings.js';
 import { pickAgentForHandover } from './escalation.js';
-import { getSetting, isAiEnabled } from './settings.js';
+import { getSetting, isAiEnabled, aiEnabledForPhone } from './settings.js';
+import { recomputeConversationMood } from './sentiment.js';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || ''; // utk link pembayaran absolut (opsional)
 
@@ -166,6 +167,12 @@ async function getKnowledge() {
   return rows;
 }
 
+// Template jawaban (quick replies) untuk diberikan ke AI sebagai acuan gaya/isi baku.
+async function getQuickReplies() {
+  const { rows } = await query('SELECT title, body FROM quick_replies ORDER BY id DESC LIMIT 30');
+  return rows;
+}
+
 // Simpan pesan
 async function saveMessage(m) {
   // wa_timestamp: untuk pesan WhatsApp gunakan epoch detik aslinya; untuk pesan
@@ -257,6 +264,10 @@ export async function handleIncoming({ session, waId, phone, name, body, waMessa
        WHERE id=$1`,
       [customer.id]
     );
+    // Perbarui mood PER-PERCAKAPAN (angka yang sama dengan dial) agar titik mood di
+    // DAFTAR percakapan langsung akurat tanpa perlu klik percakapan dulu.
+    const mood = await recomputeConversationMood(convo.id).catch(() => null);
+    if (mood != null) io?.emit('conversation:mood', { conversationId: convo.id, mood });
   }
 
   if (inMsg) io?.emit('message:new', { conversationId: convo.id, accountId: account.id, message: inMsg });
@@ -301,9 +312,12 @@ export async function handleIncoming({ session, waId, phone, name, body, waMessa
     await query('UPDATE conversations SET lang=$1 WHERE id=$2', [lang, convo.id]);
   }
 
-  // Saklar global AI: bila admin mematikan AI dari Pengaturan, AI tidak membalas
-  // siapa pun. Pesan tetap tersimpan & masuk dashboard untuk dijawab manual oleh staf.
-  const aiEnabled = await isAiEnabled();
+  // Saklar AI: bila admin mematikan AI global, AI tidak membalas siapa pun KECUALI
+  // nomor yang ada di "allowlist uji" (Pengaturan). Ini memungkinkan menguji Balasan
+  // AI / Materi AI / template pada nomor tertentu tanpa menyalakan AI untuk semua
+  // pelanggan. Pesan dari nomor lain tetap tersimpan & masuk dashboard untuk dijawab
+  // manual oleh staf.
+  const aiEnabled = await aiEnabledForPhone(customer.phone || customer.wa_id);
 
   // ===== Bukti transfer (gambar) =====
   // Bila customer mengirim GAMBAR dan ada tagihan aktif di percakapan ini, AI membaca
@@ -372,10 +386,11 @@ export async function handleIncoming({ session, waId, phone, name, body, waMessa
     const hours = await businessHoursStatus().catch(() => ({ open: true }));
     const history = await getHistory(convo.id, 14);
     const knowledge = await getKnowledge();
+    const quickReplies = await getQuickReplies().catch(() => []);
     const ticketCtx = await ticketContextForAI().catch(() => null);
     const { reply, handover, action } = await aiReply({
       knowledge, accountLabel: account.label, history, userText: body, ticketCtx,
-      lang, afterHours: !hours.open,
+      lang, afterHours: !hours.open, quickReplies,
     });
 
     // Kirim balasan utama AI dulu

@@ -24,7 +24,7 @@ import { getHistory } from './conversation.js';
 import { expireOverdue } from './payments.js';
 import { reapStalePresence } from './escalation.js';
 import { tickBroadcast, activateDueBroadcasts } from './broadcast.js';
-import { getSetting, isAiEnabled } from './settings.js';
+import { getSetting, isAiEnabled, aiEnabledForPhone } from './settings.js';
 import { backfillSentimentBatch } from './sentiment.js';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
@@ -120,7 +120,7 @@ async function tick() {
       `SELECT c.id, c.account_id, c.mode, c.status, c.assigned_agent,
               c.followups_sent, c.last_sender,
               EXTRACT(EPOCH FROM (now()-c.last_message_at)) AS idle_sec,
-              a.session, cu.wa_id
+              a.session, cu.wa_id, cu.phone
          FROM conversations c
          JOIN wa_accounts a ON a.id=c.account_id
          JOIN customers cu ON cu.id=c.customer_id
@@ -130,12 +130,14 @@ async function tick() {
         LIMIT 50`
     );
 
-    // Saklar global AI: bila dimatikan, AI tidak mengirim nudge maupun pesan
-    // penutup ke customer. Sesi tetap di-auto-close agar tidak menggantung.
-    const aiEnabled = await isAiEnabled();
+    // Saklar AI global (untuk efisiensi: hitung sekali). Bila mati, hanya nomor di
+    // allowlist uji yang masih menerima nudge/penutup dari AI.
+    const aiGlobal = await isAiEnabled();
 
     for (const convo of rows) {
       const idleMin = convo.idle_sec / 60;
+      // AI aktif untuk percakapan ini? (global ON, atau nomor ada di allowlist uji)
+      const aiEnabled = aiGlobal || await aiEnabledForPhone(convo.phone || convo.wa_id);
 
       // 1) Sudah waktunya auto-close?
       if (idleMin >= CLOSE_AFTER_MIN) {

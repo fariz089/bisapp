@@ -45,6 +45,32 @@ async function recomputeCustomerAvg(customerId) {
   );
 }
 
+// Hitung mood PER-PERCAKAPAN dengan rumus yang SAMA seperti dial di panel chat
+// (lihat /api/conversations/:id/insight). Tujuannya: titik mood di DAFTAR percakapan
+// memakai angka identik dengan dial, tanpa user harus mengklik percakapan dulu.
+// Dipanggil saat pesan customer baru masuk & saat backfill, lalu disimpan ke
+// conversations.mood_score. Mengembalikan skor (-1..1) atau null.
+export async function recomputeConversationMood(conversationId) {
+  const { rows } = await query(
+    `SELECT sentiment FROM messages
+      WHERE conversation_id=$1 AND sender_type='customer' AND sentiment IS NOT NULL
+      ORDER BY COALESCE(wa_timestamp, created_at) ASC, id ASC`,
+    [conversationId]
+  );
+  const series = rows.map(r => Number(r.sentiment));
+  const count = series.length;
+  if (!count) return null;
+  const mean = series.reduce((a, b) => a + b, 0) / count;
+  const minS = Math.min(...series);
+  const maxS = Math.max(...series);
+  const extreme = Math.abs(minS) >= Math.abs(maxS) ? minS : maxS;
+  let mood = 0.55 * extreme + 0.45 * mean;
+  if (minS <= -0.3) mood = Math.min(mood, minS * 0.6);
+  mood = Math.max(-1, Math.min(1, Math.round(mood * 1000) / 1000));
+  await query('UPDATE conversations SET mood_score=$1 WHERE id=$2', [mood, conversationId]).catch(() => {});
+  return mood;
+}
+
 // Skor satu pesan & simpan. Mengembalikan true bila berhasil dinilai.
 async function scoreMessage(msg) {
   if (!msg.body || !msg.body.trim()) {
