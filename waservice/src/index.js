@@ -165,24 +165,30 @@ client.on('disconnected', async (reason) => {
   await postWebhook('status', { status: 'disconnected' });
 });
 
-// Pesan masuk realtime
-client.on('message', async (msg) => {
+// Pesan realtime (masuk DAN keluar).
+// PENTING: pakai 'message_create', bukan 'message'. Event 'message' hanya menyala
+// untuk pesan MASUK; pesan yang kita kirim sendiri (dari HP / WA Web lain / balasan
+// agent) tak pernah memicunya, sehingga transkrip jadi sepihak / tak sinkron.
+// 'message_create' menyala untuk semua pesan; kita tandai arahnya lewat msg.fromMe.
+client.on('message_create', async (msg) => {
   if (msg.from === 'status@broadcast') return;
-  if (msg.fromMe) return;
   const chat = await msg.getChat().catch(() => null);
   if (chat?.isGroup) return; // abaikan grup; hapus baris ini bila ingin handle grup
+
+  // Untuk pesan keluar, lawan bicara ada di msg.to; untuk masuk, di msg.from.
+  const peerId = msg.fromMe ? msg.to : msg.from;
 
   let contactName = null;
   try { const c = await msg.getContact(); contactName = c?.pushname || c?.name || null; } catch {}
 
   // Nomor telepon ASLI (bisa null bila pengirim memakai @lid yang tak ter-link).
-  const phone = await resolvePhone(msg, msg.from);
+  const phone = await resolvePhone(msg, peerId);
 
   let mediaInfo = {};
   if (msg.hasMedia) mediaInfo = await downloadMedia(msg);
 
   await postWebhook('incoming', {
-    waId: msg.from,            // alamat ROUTABLE (utk balas) — @c.us atau @lid
+    waId: peerId,              // alamat ROUTABLE lawan bicara (utk balas)
     phone,                     // MSISDN bersih utk tampilan, atau null
     name: contactName,
     body: bodyForType(msg),
@@ -191,6 +197,7 @@ client.on('message', async (msg) => {
     mediaType: msg.hasMedia ? (mediaInfo.mediaType || msg.type || 'media') : null,
     mediaUrl: mediaInfo.mediaUrl || null,
     mediaName: mediaInfo.mediaName || null,
+    fromMe: msg.fromMe,        // arah pesan: true = keluar, false = masuk
   });
 });
 

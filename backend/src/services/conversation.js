@@ -213,6 +213,20 @@ export async function handleIncoming({ session, waId, phone, name, body, waMessa
     return;
   }
 
+  // Pesan keluar REALTIME (fromMe, non-historis): pesan ini kita kirim sendiri —
+  // dari HP, WA Web lain, atau balasan agent. Simpan sebagai transkrip keluar
+  // dan JANGAN picu AI. saveMessage memakai ON CONFLICT DO NOTHING pada
+  // wa_message_id, jadi balasan AI/agent yang sudah tersimpan tak terduplikasi.
+  if (fromMe) {
+    const outMsg = await saveMessage({
+      conversation_id: convo.id, account_id: account.id, wa_message_id: waMessageId,
+      direction: 'out', sender_type: 'agent', body,
+      media_type: mediaType, media_url: mediaUrl, wa_timestamp: waTimestamp,
+    });
+    if (outMsg) io?.emit('message:new', { conversationId: convo.id, accountId: account.id, message: outMsg });
+    return;
+  }
+
   // Sentimen (hanya untuk pesan customer non-historis agar hemat kuota LLM)
   let sentiment = null;
   if (body && !historical) {
