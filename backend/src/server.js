@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 
 import { initDb, query } from './db/index.js';
 import { signToken, authMiddleware, webhookAuth, verifyToken } from './services/auth.js';
-import { sendMessage, getQr } from './services/wagate.js';
+import { sendMessage, getQr, triggerSync } from './services/wagate.js';
 import { handleIncoming, sendAsAgent, getHistory } from './services/conversation.js';
 import { evaluateAgent } from './services/llm.js';
 import { startLifecycle, lifecycleConfig } from './services/lifecycle.js';
@@ -89,6 +89,15 @@ app.post('/api/webhook/status', webhookAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Webhook progres sinkronisasi riwayat dari WA service.
+// WA service mengirim fase: 'start' | 'progress' | 'done' | 'error' beserta
+// processed/total/messages. Kita teruskan apa adanya ke dashboard via socket.
+app.post('/api/webhook/sync-progress', webhookAuth, async (req, res) => {
+  const { session, phase, processed = 0, total = 0, messages = 0, chat = null, error = null } = req.body;
+  io.emit('wa:sync', { session, phase, processed, total, messages, chat, error });
+  res.json({ ok: true });
+});
+
 // ---------- AKUN WA & QR ----------
 app.get('/api/accounts', authMiddleware, async (req, res) => {
   const { rows } = await query('SELECT id, session, label, phone, status FROM wa_accounts ORDER BY id');
@@ -98,6 +107,22 @@ app.get('/api/accounts', authMiddleware, async (req, res) => {
 app.get('/api/accounts/:session/qr', authMiddleware, async (req, res) => {
   try { res.json(await getQr(req.params.session)); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Pemicu sinkronisasi manual dari dashboard (tombol "Sync sekarang" di tab Koneksi).
+// Meneruskan ke WA service; bila WA belum siap atau sync sedang berjalan, WA service
+// mengembalikan 409 dan kita teruskan pesannya agar UI bisa memberi tahu pengguna.
+// Progres selanjutnya mengalir lewat webhook sync-progress -> socket 'wa:sync'.
+app.post('/api/accounts/:session/sync', authMiddleware, async (req, res) => {
+  try {
+    const r = await triggerSync(req.params.session);
+    if (!r.ok) {
+      return res.status(r.status || 409).json({ error: r.body?.error || 'Tidak dapat memulai sinkronisasi' });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ---------- PERCAKAPAN ----------

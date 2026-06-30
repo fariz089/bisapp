@@ -301,6 +301,23 @@ tbody tr:hover{background:var(--brand-wash-2)}
 .qr-img img{width:100%;height:100%;object-fit:contain;padding:8px}
 .qr-wait{color:var(--muted);text-align:center;padding:30px 10px;font-size:13px}
 .connected-state{text-align:center;padding:46px 10px;color:var(--pos);font-family:var(--ff-display);font-weight:700}
+/* Sync riwayat (tab Koneksi) */
+.sync-box{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.sync-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sync-head .lbl{font-size:12px;font-weight:600;font-family:var(--ff-display);color:var(--muted)}
+.sync-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;background:var(--brand-wash);color:var(--brand-ink);border:1px solid var(--brand-wash);border-radius:999px;padding:6px 12px;font-size:12px;font-family:var(--ff-display);font-weight:600;cursor:pointer;transition:all .12s}
+.sync-btn:hover:not(:disabled){background:var(--brand);color:#fff;border-color:var(--brand)}
+.sync-btn:disabled{opacity:.55;cursor:not-allowed}
+.sync-btn svg{width:13px;height:13px}
+.sync-btn.spin svg{animation:syncspin 1s linear infinite}
+@keyframes syncspin{to{transform:rotate(360deg)}}
+.sync-track{height:7px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.sync-fill{height:100%;width:0;background:var(--brand);border-radius:999px;transition:width .35s ease}
+.sync-fill.done{background:var(--pos)}
+.sync-fill.err{background:var(--neg)}
+.sync-status{margin-top:7px;font-size:11.5px;color:var(--muted);min-height:15px}
+.sync-status.done{color:var(--pos);font-weight:600}
+.sync-status.err{color:var(--neg);font-weight:600}
 
 /* booking / schedule result cards */
 .res-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:14px;box-shadow:var(--shadow-sm)}
@@ -773,6 +790,10 @@ tbody tr:hover{background:var(--brand-wash-2)}
 <script>
 /* ============================= CORE ============================= */
 let token=null, me=null, socket=null, currentConv=null, accounts=[], quickReplies=[], activeView='chats';
+// Status sinkronisasi per-sesi (untuk progress bar di tab Koneksi). Disimpan di
+// memori agar tetap utuh saat loadWa() me-render ulang kartu tiap 5 detik.
+// Bentuk: { [session]: { phase:'idle'|'start'|'progress'|'done'|'error', processed, total, messages, error } }
+const syncState={};
 const api=(p,o={})=>fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,...(o.headers||{})}}).then(r=>{
   // Token kedaluwarsa/invalid saat sesi berjalan -> bersihkan & kembali ke login.
   if(r.status===401 && token){ try{ localStorage.removeItem('halte_token'); }catch{} token=null; if(!$('login').classList.contains('hidden')){} else { location.reload(); } }
@@ -922,6 +943,22 @@ function initSocket(){
     if(currentConv&&e.conversationId===currentConv.id){ toast('Sesi ditutup otomatis (tidak ada balasan).'); }
   });
   socket.on('wa:status',()=>{ refreshConnPill(); if(activeView==='wa') loadWa(); });
+  // Progres sinkronisasi riwayat dari WA service. Simpan ke syncState lalu, bila
+  // tab Koneksi sedang dibuka, perbarui hanya kartu sesi itu (tanpa render ulang penuh).
+  socket.on('wa:sync',e=>{
+    if(!e||!e.session)return;
+    const prev=syncState[e.session]||{};
+    syncState[e.session]={
+      phase:e.phase||'progress',
+      processed:e.processed??prev.processed??0,
+      total:e.total??prev.total??0,
+      messages:e.messages??prev.messages??0,
+      error:e.error||null,
+    };
+    if(activeView==='wa') renderSyncBox(e.session);
+    if(e.phase==='done') toast('Sinkronisasi selesai: '+(e.messages||0)+' pesan','ok');
+    if(e.phase==='error') toast('Sinkronisasi gagal: '+(e.error||'tidak diketahui'),'err');
+  });
 }
 function markDirty(){ if(activeView==='chats') loadConversations(); updateBadge(); }
 
@@ -1724,6 +1761,66 @@ async function addQuick(){
 async function delQuick(id){ await api('/quick-replies/'+id,{method:'DELETE'}); await loadCanned(); toast('Balasan dihapus'); }
 
 /* ============================= WA CONNECTION ============================= */
+// Teks status manusiawi dari state sinkronisasi sebuah sesi.
+function syncText(st){
+  if(!st||st.phase==='idle'||!st.phase) return 'Belum ada sinkronisasi pada sesi ini.';
+  if(st.phase==='start') return 'Menyiapkan sinkronisasi…';
+  if(st.phase==='progress') return `Menyinkronkan… ${st.processed}/${st.total} chat · ${st.messages} pesan`;
+  if(st.phase==='done') return `Selesai: ${st.messages} pesan dari ${st.total} chat.`;
+  if(st.phase==='error') return `Gagal: ${st.error||'tidak diketahui'}`;
+  return '';
+}
+// Persen progress bar dari state.
+function syncPct(st){
+  if(!st) return 0;
+  if(st.phase==='done') return 100;
+  if(st.phase==='start') return 4;          // sedikit terisi agar terasa mulai
+  if(st.phase==='progress' && st.total>0) return Math.max(4, Math.round(st.processed/st.total*100));
+  if(st.phase==='error') return 100;        // bar penuh berwarna merah
+  return 0;
+}
+// Perbarui HANYA elemen sync milik satu sesi (dipanggil dari socket & saat klik),
+// tanpa me-render ulang seluruh grid (agar tidak mengganggu QR/scroll).
+function renderSyncBox(session){
+  const st=syncState[session];
+  const busy=st&&(st.phase==='start'||st.phase==='progress');
+  const fill=$('syncFill-'+session);
+  const stat=$('syncStat-'+session);
+  const btn=$('syncBtn-'+session);
+  if(fill){
+    fill.style.width=syncPct(st)+'%';
+    fill.classList.toggle('done', !!st&&st.phase==='done');
+    fill.classList.toggle('err', !!st&&st.phase==='error');
+  }
+  if(stat){
+    stat.textContent=syncText(st);
+    stat.classList.toggle('done', !!st&&st.phase==='done');
+    stat.classList.toggle('err', !!st&&st.phase==='error');
+  }
+  if(btn){
+    btn.disabled=!!busy;
+    btn.classList.toggle('spin', !!busy);
+    btn.querySelector('span').textContent=busy?'Menyinkronkan…':'Sync sekarang';
+  }
+}
+// Klik tombol "Sync sekarang".
+async function triggerSync(session){
+  const btn=$('syncBtn-'+session);
+  if(btn) btn.disabled=true;
+  // Optimis: tandai sedang menyiapkan agar UI langsung merespons.
+  syncState[session]={phase:'start',processed:0,total:0,messages:0,error:null};
+  renderSyncBox(session);
+  const r=await api('/accounts/'+session+'/sync',{method:'POST'}).catch(()=>({error:'Gagal menghubungi server'}));
+  if(r&&r.error){
+    // 409 (belum siap / sedang sync) atau error lain.
+    syncState[session]={phase:'error',processed:0,total:0,messages:0,error:r.error};
+    renderSyncBox(session);
+    toast(r.error,'err');
+    return;
+  }
+  // Sukses memulai — progres selanjutnya datang lewat socket 'wa:sync'.
+  toast('Sinkronisasi dimulai…','ok');
+}
 async function loadWa(){
   const box=$('qrGrid'); box.innerHTML='<div class="empty">Memuat status…</div>';
   const html=[];
@@ -1731,16 +1828,38 @@ async function loadWa(){
     let q={ready:false,qr:null}; try{ q=await api('/accounts/'+a.session+'/qr'); }catch{}
     const connected=q.ready||a.status==='connected';
     const stat=connected?`<span class="stat" style="color:var(--pos)"><span class="led up"></span>Terhubung</span>`:`<span class="stat" style="color:var(--neu)"><span class="led down"></span>Menunggu</span>`;
+    const st=syncState[a.session];
+    const busy=st&&(st.phase==='start'||st.phase==='progress');
+    // Strip sinkronisasi hanya muncul saat nomor sudah terhubung (sync butuh sesi siap).
+    const syncBox=connected?`
+      <div class="sync-box">
+        <div class="sync-head">
+          <span class="lbl">Sinkronisasi riwayat</span>
+          <button class="sync-btn${busy?' spin':''}" id="syncBtn-${a.session}" ${busy?'disabled':''} onclick="triggerSync('${a.session}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+            <span>${busy?'Menyinkronkan…':'Sync sekarang'}</span>
+          </button>
+        </div>
+        <div class="sync-track"><div class="sync-fill${st&&st.phase==='done'?' done':''}${st&&st.phase==='error'?' err':''}" id="syncFill-${a.session}" style="width:${syncPct(st)}%"></div></div>
+        <div class="sync-status${st&&st.phase==='done'?' done':''}${st&&st.phase==='error'?' err':''}" id="syncStat-${a.session}">${esc(syncText(st))}</div>
+      </div>`:'';
     html.push(`<div class="qr-card">
       <div class="top"><h3>${esc(a.label)}</h3>${stat}</div>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">${esc(a.phone||'Nomor belum terhubung')}</div>
       <div class="qr-img">${connected?'<div class="connected-state"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div style="margin-top:8px">Siap menerima pesan</div></div>':(q.qr?`<img src="${q.qr}"/>`:'<div class="qr-wait">Menyiapkan kode QR…<br>Tunggu sebentar.</div>')}</div>
       ${connected?'':'<div style="font-size:12px;color:var(--muted);margin-top:12px;text-align:center">WhatsApp → Perangkat Tertaut → Tautkan Perangkat</div>'}
+      ${syncBox}
     </div>`);
   }
   box.innerHTML=html.join('')||'<div class="empty">Belum ada kanal terdaftar.</div>';
 }
-setInterval(()=>{ if(activeView==='wa'&&token)loadWa(); },5000);
+// Auto-refresh kartu WA tiap 5 dtk — TAPI jangan ganggu saat sinkronisasi sedang
+// berjalan (render ulang akan mengganti elemen progress di tengah animasi).
+setInterval(()=>{
+  if(activeView!=='wa'||!token) return;
+  const anyBusy=Object.values(syncState).some(s=>s&&(s.phase==='start'||s.phase==='progress'));
+  if(!anyBusy) loadWa();
+},5000);
 
 /* ============================= AGENTS ============================= */
 async function loadAgents(){

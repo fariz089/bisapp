@@ -173,7 +173,22 @@ async function getQuickReplies() {
   return rows;
 }
 
-// Simpan pesan
+// Penanda pesan yang DITARIK/dihapus di WhatsApp. WA service (bodyForType)
+// mengubah pesan type 'revoked' menjadi teks ini. Saat sync ulang membawa
+// penanda ini untuk pesan yang SUDAH tersimpan, kita TIDAK menimpa body lama —
+// arsip lokal sengaja dipertahankan meski pesannya hilang di WhatsApp.
+const DELETED_MARKER = '[Pesan ditarik]';
+
+// Simpan pesan.
+// Perilaku saat wa_message_id sudah ada (ON CONFLICT):
+//  - Secara default kita PERBARUI isi (body/media) — berguna saat versi pertama
+//    tersimpan tak lengkap (mis. media belum sempat terunduh, body kosong) lalu
+//    sync ulang membawa versi yang utuh. Ini permintaan: "ID sama tapi body beda
+//    -> update isinya".
+//  - PENGECUALIAN penting: bila update yang masuk adalah penanda PESAN DIHAPUS,
+//    atau body-nya kosong, kita BIARKAN data lama. Jadi pesan yang dihapus di WA
+//    TIDAK ikut terhapus / tertimpa di database. (Permintaan: kasus pesan dihapus
+//    jangan di-update, biarkan pesan tetap ada di database.)
 async function saveMessage(m) {
   // wa_timestamp: untuk pesan WhatsApp gunakan epoch detik aslinya; untuk pesan
   // keluar yang kita buat sendiri (AI/agent), pakai waktu sekarang. Ini yang
@@ -181,15 +196,44 @@ async function saveMessage(m) {
   const waTs = m.wa_timestamp != null
     ? new Date(Number(m.wa_timestamp) * 1000).toISOString()
     : null;
+  const body = m.body || null;
+  // Apakah payload ini "pengosong" yang tidak boleh menimpa data bagus?
+  // (pesan ditarik, atau body kosong). EXCLUDED.body dipakai di SQL di bawah.
+  const isErasing = !body || body === DELETED_MARKER;
+
   const { rows } = await query(
     `INSERT INTO messages
        (conversation_id, account_id, wa_message_id, direction, sender_type, agent_id, body, media_type, media_url, sentiment, wa_timestamp)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11, now()))
-     ON CONFLICT (account_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING
+     ON CONFLICT (account_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO UPDATE SET
+       -- Hanya perbarui body bila yang masuk BUKAN penanda hapus dan TIDAK kosong.
+       -- Bila pesan dihapus di WA (EXCLUDED.body = penanda) atau kosong, body lama
+       -- dipertahankan apa adanya.
+       body = CASE
+                WHEN EXCLUDED.body IS NULL OR EXCLUDED.body = $12 THEN messages.body
+                ELSE EXCLUDED.body
+              END,
+       -- Lengkapi media bila versi baru membawanya; jangan hapus media yang sudah ada.
+       media_type = COALESCE(EXCLUDED.media_type, messages.media_type),
+       media_url  = COALESCE(EXCLUDED.media_url,  messages.media_url)
+     WHERE
+       -- Lewati UPDATE sama sekali bila tak ada yang berubah secara berarti.
+       -- (Mencegah RETURNING memunculkan baris -> mencegah event/dupe palsu.)
+       (EXCLUDED.body IS NOT NULL AND EXCLUDED.body <> $12 AND EXCLUDED.body IS DISTINCT FROM messages.body)
+       OR (EXCLUDED.media_type IS NOT NULL AND EXCLUDED.media_type IS DISTINCT FROM messages.media_type)
+       OR (EXCLUDED.media_url  IS NOT NULL AND EXCLUDED.media_url  IS DISTINCT FROM messages.media_url)
      RETURNING *`,
     [m.conversation_id, m.account_id, m.wa_message_id || null, m.direction, m.sender_type,
-     m.agent_id || null, m.body || null, m.media_type || null, m.media_url || null, m.sentiment ?? null, waTs]
+     m.agent_id || null, body, m.media_type || null, m.media_url || null, m.sentiment ?? null, waTs,
+     DELETED_MARKER]
   );
+  // CATATAN: RETURNING kini bisa kosong dalam dua kasus:
+  //  (1) konflik tapi tidak ada perubahan berarti (WHERE di atas false), atau
+  //  (2) pesan baru yang benar-benar diinsert TIDAK terjadi (selalu mengembalikan baris).
+  // Jadi `rows[0]` undefined => "tidak ada yang baru untuk disiarkan", caller sudah
+  // menangani ini (hanya emit bila ada baris). `isErasing` sengaja tidak dipakai di
+  // sini selain sebagai dokumentasi; logika hapus sudah dijaga di SQL.
+  void isErasing;
   return rows[0];
 }
 

@@ -81,6 +81,9 @@ function bodyForType(msg) {
 
 let lastQrDataUrl = null;
 let ready = false;
+// Penanda sinkronisasi sedang berjalan, agar klik ganda / pemicu ganda tidak
+// menjalankan dua proses sync sekaligus (yang akan menggandakan beban & progress).
+let syncing = false;
 
 // Apakah sebuah id WhatsApp berbasis NOMOR TELEPON (@c.us) dan bukan id internal
 // seperti @lid / @g.us. Hanya @c.us yang bagian depannya = MSISDN asli.
@@ -224,46 +227,83 @@ async function fetchAllMessages(chat) {
 }
 
 async function syncOldMessages() {
-  console.log(`[wa:${SESSION}] mulai sinkronisasi riwayat (target ${SYNC_LIMIT}/chat, page ${SYNC_PAGE})...`);
-  const chats = await client.getChats();
-  let count = 0;
-  for (const chat of chats) {
-    if (chat.isGroup) continue;
-    const msgs = await fetchAllMessages(chat);
-    // Nomor telepon level-chat: dari id chat (@c.us) atau kontak chat.
-    let chatPhone = phoneFromId(chat?.id?._serialized);
-    if (!chatPhone) {
-      try {
-        const cc = await chat.getContact();
-        chatPhone = phoneFromId(cc?.id?._serialized)
-          || ((cc?.number || '').replace(/\D/g, '').length >= 8 ? (cc.number || '').replace(/\D/g, '') : null);
-      } catch {}
-    }
-    for (const m of msgs) {
-      // hanya pesan masuk dari customer yang kita simpan via webhook incoming.
-      // pesan keluar lama (fromMe) dikirim sebagai histori juga agar transkrip utuh.
-      let mediaInfo = {};
-      if (m.hasMedia) mediaInfo = await downloadMedia(m);
-      // Untuk pesan masuk, coba nomor pengirim; fallback ke nomor chat.
-      const phone = (!m.fromMe ? await resolvePhone(m, m.from) : null) || chatPhone;
-      await postWebhook('incoming', {
-        waId: m.fromMe ? chat.id._serialized : m.from,
-        phone,
-        name: chat.name || null,
-        body: bodyForType(m),
-        waMessageId: m.id?._serialized,
-        waTimestamp: m.timestamp || null,   // epoch detik dari WhatsApp
-        mediaType: m.hasMedia ? (mediaInfo.mediaType || m.type || 'media') : null,
-        mediaUrl: mediaInfo.mediaUrl || null,
-        mediaName: mediaInfo.mediaName || null,
-        historical: true,
-        fromMe: m.fromMe,
-      });
-      count++;
-    }
-    console.log(`[wa:${SESSION}] chat ${chat.name || chat.id?.user}: ${msgs.length} pesan.`);
+  // Guard: jangan jalankan dua sync sekaligus.
+  if (syncing) {
+    console.log(`[wa:${SESSION}] sync diabaikan — masih ada sync berjalan.`);
+    return;
   }
-  console.log(`[wa:${SESSION}] sinkronisasi selesai: ${count} pesan dikirim ke backend.`);
+  if (!ready) {
+    console.log(`[wa:${SESSION}] sync ditolak — WA belum siap.`);
+    await postWebhook('sync-progress', { phase: 'error', error: 'WA belum siap', processed: 0, total: 0, messages: 0 });
+    return;
+  }
+  syncing = true;
+  let count = 0;
+  let processed = 0;
+  let total = 0;
+  try {
+    console.log(`[wa:${SESSION}] mulai sinkronisasi riwayat (target ${SYNC_LIMIT}/chat, page ${SYNC_PAGE})...`);
+    const allChats = await client.getChats();
+    // Hanya chat non-grup yang kita proses; hitung totalnya agar progress bar akurat.
+    const chats = allChats.filter(c => !c.isGroup);
+    total = chats.length;
+    // Fase START: beri tahu dashboard berapa total chat yang akan diproses.
+    await postWebhook('sync-progress', { phase: 'start', processed: 0, total, messages: 0 });
+
+    for (const chat of chats) {
+      const msgs = await fetchAllMessages(chat);
+      // Nomor telepon level-chat: dari id chat (@c.us) atau kontak chat.
+      let chatPhone = phoneFromId(chat?.id?._serialized);
+      if (!chatPhone) {
+        try {
+          const cc = await chat.getContact();
+          chatPhone = phoneFromId(cc?.id?._serialized)
+            || ((cc?.number || '').replace(/\D/g, '').length >= 8 ? (cc.number || '').replace(/\D/g, '') : null);
+        } catch {}
+      }
+      for (const m of msgs) {
+        // hanya pesan masuk dari customer yang kita simpan via webhook incoming.
+        // pesan keluar lama (fromMe) dikirim sebagai histori juga agar transkrip utuh.
+        let mediaInfo = {};
+        if (m.hasMedia) mediaInfo = await downloadMedia(m);
+        // Untuk pesan masuk, coba nomor pengirim; fallback ke nomor chat.
+        const phone = (!m.fromMe ? await resolvePhone(m, m.from) : null) || chatPhone;
+        await postWebhook('incoming', {
+          waId: m.fromMe ? chat.id._serialized : m.from,
+          phone,
+          name: chat.name || null,
+          body: bodyForType(m),
+          waMessageId: m.id?._serialized,
+          waTimestamp: m.timestamp || null,   // epoch detik dari WhatsApp
+          mediaType: m.hasMedia ? (mediaInfo.mediaType || m.type || 'media') : null,
+          mediaUrl: mediaInfo.mediaUrl || null,
+          mediaName: mediaInfo.mediaName || null,
+          historical: true,
+          fromMe: m.fromMe,
+        });
+        count++;
+      }
+      processed++;
+      console.log(`[wa:${SESSION}] chat ${chat.name || chat.id?.user}: ${msgs.length} pesan. (${processed}/${total})`);
+      // Fase PROGRESS: laporkan kemajuan per chat agar progress bar bergerak.
+      await postWebhook('sync-progress', {
+        phase: 'progress', processed, total, messages: count,
+        chat: chat.name || chat.id?.user || null,
+      });
+    }
+
+    console.log(`[wa:${SESSION}] sinkronisasi selesai: ${count} pesan dikirim ke backend.`);
+    // Fase DONE: sukses.
+    await postWebhook('sync-progress', { phase: 'done', processed, total, messages: count });
+  } catch (e) {
+    console.error(`[wa:${SESSION}] sinkronisasi gagal:`, e.message);
+    // Fase ERROR: kirim pesan kegagalan agar dashboard menampilkan status gagal.
+    await postWebhook('sync-progress', {
+      phase: 'error', error: e.message || 'gagal', processed, total, messages: count,
+    });
+  } finally {
+    syncing = false;
+  }
 }
 
 // ---- HTTP API untuk backend ----
@@ -293,10 +333,18 @@ app.post('/send', async (req, res) => {
   }
 });
 
-app.get('/sync', async (req, res) => {
+// Pemicu sinkronisasi manual. Mengembalikan 409 bila WA belum siap atau sync
+// sedang berjalan, agar tombol "Sync sekarang" di dashboard bisa memberi tahu
+// pengguna alih-alih diam-diam memulai proses kedua.
+function startManualSync(req, res) {
+  if (!ready) return res.status(409).json({ error: 'WA belum siap', ready: false });
+  if (syncing) return res.status(409).json({ error: 'Sinkronisasi sedang berjalan', syncing: true });
   res.json({ ok: true, message: 'sinkronisasi dimulai' });
+  // Jalankan di latar belakang; progress dilaporkan via webhook sync-progress.
   syncOldMessages().catch(() => {});
-});
+}
+app.post('/sync', startManualSync);
+app.get('/sync', startManualSync);   // kompatibilitas: pemicu lama via GET tetap jalan
 
 app.listen(PORT, () => console.log(`[wa:${SESSION}] HTTP di :${PORT}`));
 client.initialize();

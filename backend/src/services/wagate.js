@@ -30,3 +30,15 @@ export async function getQr(session) {
   const res = await fetch(`${url}/qr`);
   return res.json();
 }
+
+// Picu sinkronisasi riwayat di WA service untuk sebuah sesi.
+// WA service mengembalikan 409 bila belum siap / sedang sync — kita teruskan
+// status itu apa adanya agar route backend bisa membalas pesan yang sesuai.
+export async function triggerSync(session) {
+  const url = map[session];
+  if (!url) throw new Error(`Endpoint WA untuk sesi '${session}' tidak ada`);
+  const res = await fetch(`${url}/sync`, { method: 'POST' });
+  let body = {};
+  try { body = await res.json(); } catch {}
+  return { status: res.status, ok: res.ok, body };
+}
